@@ -15,7 +15,11 @@ var roster
 var skills
 var robot_id := ""
 var pending := {}
+const ChatHistory = preload("res://core/chat_history.gd")
+var history_store = ChatHistory.new()
 var histories := {}
+var clear_history_button: Button
+var clear_history_confirm: ConfirmationDialog
 var question := ""
 var online_busy := false
 var online_operation := ""
@@ -53,6 +57,7 @@ func configure(roster_: Object, skills_: Object) -> void:
 	skills = skills_
 
 func _ready() -> void:
+	histories = history_store.load_all()
 	title = "CUBYTE | Cubot chat"
 	size = Vector2i(450, 880)
 	transient = true
@@ -178,6 +183,13 @@ func _ready() -> void:
 	fields.add_child(UI.label("Guest AI uses CUBYTE’s server and shared daily limits. Messages may go to Google Gemini. Free-tier providers may use submitted content for improvement. Personal OpenAI requests use your own credits. Extra context is optional.", 16, UI.MUTED))
 	connection = UI.label("Not tested", 18)
 	fields.add_child(connection)
+	fields.add_child(UI.label("Chat history is saved locally on this device (last 12 exchanges per Cubot). Enable Share extra context only if you want to send recent chat and memory to the AI provider. Avoid entering sensitive information.", 16, UI.MUTED))
+	clear_history_button = UI.button("Clear this Cubot’s history", _confirm_clear_history)
+	fields.add_child(clear_history_button)
+	clear_history_confirm = ConfirmationDialog.new()
+	clear_history_confirm.title = "Clear chat history?"
+	clear_history_confirm.confirmed.connect(_clear_history)
+	add_child(clear_history_confirm)
 	settings_status = UI.label("", 16, UI.MUTED)
 	fields.add_child(settings_status)
 	back_button = UI.button("Back to chat", _show_chat, true)
@@ -275,9 +287,9 @@ func _ask() -> void:
 	for tool in ["text", "png"]:
 		if roster.can_use(robot_id, tool):
 			permitted.append(tool)
+	var profile: Dictionary = roster.get_profile(robot_id)
 	var context := {}
 	if share_context.button_pressed:
-		var profile: Dictionary = roster.get_profile(robot_id)
 		var binding: Dictionary = skills.get_binding(robot_id)
 		var skill_doc := ""
 		if not binding.is_empty():
@@ -414,9 +426,11 @@ func _online_completed(result: int, code: int, _headers: PackedStringArray, body
 			if not request_key.is_empty() and response.contains(request_key):
 				status.text = "Response rejected: contained credential."
 			else:
-				_accept_response(response)
+				var saved := _accept_response(response)
 				prompt_box.clear()
 				status.text = "Response received." if pending.is_empty() else "Approve or reject the proposed action."
+				if not saved:
+					status.text += " Local history could not be saved."
 	else:
 		verified = false
 		connection.text = "Not verified"
@@ -429,7 +443,7 @@ func _online_completed(result: int, code: int, _headers: PackedStringArray, body
 	_draw_history()
 	_update_buttons()
 
-func _accept_response(response: String) -> void:
+func _accept_response(response: String) -> bool:
 	var turns: Array = histories.get(robot_id, [])
 	turns.append({"user": question.left(2048), "assistant": response.left(4096)})
 	while turns.size() > 12:
@@ -438,6 +452,26 @@ func _accept_response(response: String) -> void:
 	pending = Policy.proposal(response)
 	if not pending.is_empty() and not roster.can_use(robot_id, pending["tool"]):
 		pending = {}
+	return history_store.save(robot_id, turns)
+
+func _confirm_clear_history() -> void:
+	if online_busy or robot_id.is_empty():
+		return
+	clear_history_confirm.dialog_text = "Delete saved conversation with " + robot_id.to_upper() + " on this device? Profile notes and skills are not affected."
+	clear_history_confirm.popup_centered()
+
+func _clear_history() -> void:
+	if online_busy or robot_id.is_empty():
+		return
+	if history_store.clear(robot_id):
+		histories.erase(robot_id)
+		pending = {}
+		prompt_box.clear()
+		settings_status.text = "Local conversation cleared."
+		_draw_history()
+	else:
+		settings_status.text = "Could not clear local conversation."
+	_update_buttons()
 
 func _draw_history() -> void:
 	if not is_instance_valid(transcript):
@@ -489,6 +523,7 @@ func _update_buttons() -> void:
 	share_context.disabled = online_busy
 	test_button.disabled = online_busy
 	clear_key_button.disabled = online_busy
+	clear_history_button.disabled = online_busy or robot_id.is_empty()
 	back_button.disabled = online_busy
 	prompt_box.editable = not online_busy
 	_update_quota_display()
