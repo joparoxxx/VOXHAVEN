@@ -7,6 +7,7 @@ var _root: String
 var _tasks: Dictionary = {}
 var _next_id: int = 1
 var _ready: bool = false
+var _permission_checker: Callable
 
 func _init(root: String = "user://cubyte") -> void:
 	_root = root
@@ -17,8 +18,30 @@ func _init(root: String = "user://cubyte") -> void:
 func is_ready() -> bool:
 	return _ready
 
+func set_permission_checker(checker: Callable) -> void:
+	_permission_checker = checker
+
+func _allowed(robot_id: String, tool: String) -> bool:
+	return not _permission_checker.is_valid() or _permission_checker.call(robot_id, tool) == true
+
+func history(robot_id: String, limit: int = 30) -> Array:
+	var result := []
+	if limit <= 0:
+		return result
+	for n in range(_next_id - 1, 0, -1):
+		var id := str(n)
+		if _tasks.has(id) and _tasks[id]["robot_id"] == robot_id:
+			var item: Dictionary = get_task(id)
+			item.erase("payload")
+			result.append(item)
+			if result.size() >= mini(limit, 100):
+				break
+	return result
+
 func enqueue(robot_id: String, tool: String, payload: String) -> String:
 	if not _ready or robot_id.is_empty() or robot_id.length() > 64 or not tool in TOOLS or payload.to_utf8_buffer().size() > MAX_TEXT_BYTES:
+		return ""
+	if not _allowed(robot_id, tool):
 		return ""
 	var id := str(_next_id)
 	_next_id += 1
@@ -54,6 +77,11 @@ func run_next() -> bool:
 func _execute(id: String) -> void:
 	var task: Dictionary = _tasks[id]
 	var tool: String = task["tool"]
+	if not _allowed(task["robot_id"], tool):
+		task["error"] = "Tool permission denied."
+		task["payload"] = ""
+		_transition(id, "failed")
+		return
 	var path := _root + "/artifacts/" + id + (".txt" if tool == "text" else ".png")
 	var valid := false
 	if tool == "text":
