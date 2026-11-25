@@ -1,15 +1,10 @@
 extends RefCounted
 ## Fixed HTTPS origins; no arbitrary URL, redirects or remote tool execution.
-const ENDPOINTS := {
-	"gemini": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-	"openrouter": "https://openrouter.ai/api/v1/chat/completions",
-	"groq": "https://api.groq.com/openai/v1/chat/completions",
-	"openai": "https://api.openai.com/v1/chat/completions"
-}
+const ENDPOINT := "https://api.openai.com/v1/chat/completions"
 static func make_request(provider: String, model: String, key: String, system: String, prompt: String) -> Dictionary:
 	model = model.strip_edges()
 	key = key.strip_edges()
-	if not ENDPOINTS.has(provider) or model.is_empty() or model.length() > 200 or key.is_empty() or key.length() > 4096:
+	if provider != "openai" or model.is_empty() or model.length() > 200 or key.is_empty() or key.length() > 4096:
 		return {}
 	for ch in key:
 		if ch.unicode_at(0) < 33 or ch.unicode_at(0) > 126:
@@ -17,11 +12,8 @@ static func make_request(provider: String, model: String, key: String, system: S
 	if system.to_utf8_buffer().size() > 32768 or prompt.to_utf8_buffer().size() > 2048:
 		return {}
 	var body := {"model": model, "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}], "stream": false}
-	if provider == "openai":
-		body["max_completion_tokens"] = 1024
-	else:
-		body["max_tokens"] = 1024
-	return {"url": ENDPOINTS[provider], "headers": PackedStringArray(["Content-Type: application/json", "Authorization: Bearer " + key]), "body": JSON.stringify(body)}
+	body["max_completion_tokens"] = 1024
+	return {"url": ENDPOINT, "headers": PackedStringArray(["Content-Type: application/json", "Authorization: Bearer " + key]), "body": JSON.stringify(body)}
 
 static func parse_response(transport: int, code: int, raw: String) -> Dictionary:
 	if transport != HTTPRequest.RESULT_SUCCESS:
