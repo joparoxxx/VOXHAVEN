@@ -42,8 +42,8 @@ var tool_picker: OptionButton
 var skill_status: Label
 var skill_summary: Label
 var skill_button: Button
-const ROBOT_IDS := ["atlas", "pixel", "mesh"]
-const ROBOT_COLORS := [Color("#d7b56d"), Color("#a48bdf"), Color("#62a9d9")]
+const ROBOT_IDS := ["atlas", "pixel", "mesh", "nova"]
+const ROBOT_COLORS := [Color("#d7b56d"), Color("#a48bdf"), Color("#62a9d9"), Color("#70d7b1")]
 var engine = TaskEngine.new()
 var robots: Array[Node3D] = []
 var wheels: Array[MeshInstance3D] = []
@@ -72,12 +72,17 @@ var route: Array[Vector3] = []
 var eyes: Array = []
 var mouths: Array[MeshInstance3D] = []
 var face_clock := 0.0
-var face_states := ["idle", "idle", "idle"]
-var face_until := [0.0, 0.0, 0.0]
-var last_active := [0.0, 0.0, 0.0]
+var face_states := ["idle", "idle", "idle", "idle"]
+var face_until := [0.0, 0.0, 0.0, 0.0]
+var last_active := [0.0, 0.0, 0.0, 0.0]
 var robot_bodies: Array[MeshInstance3D] = []
 var desks: Array[Node3D] = []
-var workstation_ids := [0, 1, 2]
+var workstation_ids := [0, 1, 2, 3]
+var ambient_robot := -1
+var ambient_route: Array[Vector3] = []
+var ambient_wait := 5.0
+var ambient_cursor := 0
+var face_update_wait := 0.0
 const Snapshot = preload("res://core/snapshot_store.gd")
 var layout_store = Snapshot.new("user://cubyte/office", "layout.json")
 var build_dialog: Window
@@ -94,6 +99,7 @@ var color_picker: ColorPickerButton
 var camera_target := Vector3(0, 1, 0)
 
 func _ready() -> void:
+	roster.set_nova_unlocked("nova" in company.snapshot()["hires"])
 	engine.set_permission_checker(Callable(roster, "can_use"))
 	_build_office()
 	_build_ui()
@@ -151,6 +157,15 @@ func _build_office() -> void:
 		_box(desk, Vector3(0.85, 0.55, 0.12), Vector3(0, 1.22, -0.15), Color("#263749"))
 		_build_robot(Vector3(x, 0, 0.5), ROBOT_COLORS[i])
 	_box(self, Vector3(1.8, 0.15, 1.3), Vector3(3.5, 0.08, 2.4), Color("#4a6b72"))
+	var nova_desk := Node3D.new()
+	add_child(nova_desk)
+	nova_desk.position = Vector3(-2.5, 0, 2.8)
+	nova_desk.rotation.y = PI
+	desks.append(nova_desk)
+	_box(nova_desk, Vector3(1.8, 0.9, 0.85), Vector3(0, 0.45, 0), Color("#b8bec7"))
+	_box(nova_desk, Vector3(0.85, 0.55, 0.12), Vector3(0, 1.22, -0.15), Color("#263749"))
+	_build_robot(Vector3(0, 0, 2.0), ROBOT_COLORS[3])
+	_refresh_hired_robot()
 	_restore_layout()
 	decorations = Node3D.new()
 	add_child(decorations)
@@ -357,7 +372,7 @@ func _build_ui() -> void:
 	_select_cubot(-1)
 
 func _select_cubot(index: int) -> void:
-	if busy or index < -1 or index >= ROBOT_IDS.size():
+	if busy or index < -1 or index >= ROBOT_IDS.size() or (index >= 0 and not roster.is_active(ROBOT_IDS[index])):
 		return
 	selected = index
 	for i in range(selection_rings.size()):
@@ -441,6 +456,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	var nearest := -1
 	var distance := 42.0
 	for i in range(robots.size()):
+		if not roster.is_active(ROBOT_IDS[i]):
+			continue
 		var projected := office_camera.unproject_position(robots[i].global_position + Vector3(0, 0.8, 0))
 		var d := point.distance_to(projected)
 		if d < distance:
@@ -459,7 +476,9 @@ func _queue(tool: String, payload: String, requested_by: String = "") -> void:
 	_start_queued()
 
 func _start_queued() -> void:
-	var target := desks[workstation_ids[selected]].position + Vector3(0, 0, 1.6)
+	_stop_ambient()
+	var station: int = workstation_ids[selected]
+	var target := desks[station].position + Vector3(0, 0, -1.6 if station == 3 else 1.6)
 	route = navigator.route(robots[selected].position, target)
 	if route.is_empty():
 		status.text = "No clear route to workstation. Task remains queued."
@@ -495,8 +514,12 @@ func _reset() -> void:
 
 func _process(delta: float) -> void:
 	face_clock += delta
-	_update_faces()
+	face_update_wait += delta
+	if face_update_wait >= 0.08:
+		face_update_wait = 0.0
+		_update_faces()
 	if not busy:
+		_update_ambient(delta)
 		return
 	var robot := robots[selected]
 	if not route.is_empty():
@@ -526,6 +549,8 @@ func _process(delta: float) -> void:
 
 func _update_faces() -> void:
 	for i in range(eyes.size()):
+		if not roster.is_active(ROBOT_IDS[i]):
+			continue
 		if face_until[i] > 0 and face_clock > face_until[i]:
 			face_states[i] = "idle"
 			face_until[i] = 0.0
@@ -880,7 +905,7 @@ func _run_queued(id: String) -> void:
 	if task.get("status") != "queued":
 		return
 	var index := ROBOT_IDS.find(task.get("robot_id", ""))
-	if index < 0:
+	if index < 0 or not roster.is_active(ROBOT_IDS[index]):
 		return
 	_select_cubot(index)
 	pending_id = id
@@ -905,8 +930,10 @@ func _export_skill() -> void:
 
 func _rebuild_navigation() -> void:
 	navigator = Navigation.new()
-	for desk in desks:
-		navigator.block_box(desk.position, Vector2(1.35, 0.85))
+	for i in range(desks.size()):
+		if i == 3 and not roster.is_active("nova"):
+			continue
+		navigator.block_box(desks[i].position, Vector2(1.35, 0.85))
 	navigator.block_box(Vector3(3.5, 0, 2.4), Vector2(1.35, 1.1))
 
 func _restore_layout() -> void:
@@ -941,7 +968,7 @@ func _save_layout() -> bool:
 	for i in range(3):
 		offsets.append(desks[i].position.z)
 		colors.append(robot_bodies[i].material_override.albedo_color.to_html(false))
-	return layout_store.write("layout", JSON.stringify({"version": 1, "desks": offsets, "stations": workstation_ids, "colors": colors}))
+	return layout_store.write("layout", JSON.stringify({"version": 1, "desks": offsets, "stations": workstation_ids.slice(0, 3), "colors": colors}))
 
 func _build_layout_dialog() -> void:
 	build_dialog = Window.new()
@@ -1003,6 +1030,8 @@ func _move_desk(direction: int) -> void:
 			nearest = i
 	desks[index].position.z = positions[clampi(nearest + direction, 0, 2)]
 	for robot in robots:
+		if not robot.visible:
+			continue
 		if absf(robot.position.x - desks[index].position.x) <= 1.35 and absf(robot.position.z - desks[index].position.z) <= 0.85:
 			desks[index].position.z = old
 			layout_status.text = "A robot occupies that space."
@@ -1116,7 +1145,7 @@ func _team_task(robot_id: String, tool: String, payload: String, worker_id: Stri
 func _refresh_company_label() -> void:
 	if is_instance_valid(company_label):
 		var data: Dictionary = company.snapshot()
-		company_label.text = str(data["company"]) + " · " + str(int(data["credits"])) + " credits"
+		company_label.text = "Lv " + str(company.level()) + " · " + str(int(data["credits"])) + " credits"
 
 func _show_company() -> void:
 	if not busy and not ai_console.online_busy:
@@ -1124,6 +1153,7 @@ func _show_company() -> void:
 
 func _company_changed() -> void:
 	_refresh_company_label()
+	_refresh_hired_robot()
 	_refresh_decorations()
 	_rebuild_navigation()
 
@@ -1157,3 +1187,61 @@ func _start_team_workflow(ids: Array) -> void:
 		workflow_queue.append(str(id))
 	var first: String = workflow_queue.pop_front()
 	_run_queued(first)
+
+func _refresh_hired_robot() -> void:
+	var hired: bool = "nova" in company.snapshot()["hires"]
+	roster.set_nova_unlocked(hired)
+	robots[3].visible = hired
+	desks[3].visible = hired
+
+func _stop_ambient() -> void:
+	ambient_robot = -1
+	ambient_route.clear()
+	ambient_wait = 4.0
+
+func _modal_open() -> bool:
+	for window in [ai_console, team_chat, workspace, build_dialog, robot_dialog, skill_dialog, company_hq, workflow_builder]:
+		if is_instance_valid(window) and window.visible:
+			return true
+	return false
+
+func _update_ambient(delta: float) -> void:
+	if _modal_open():
+		_stop_ambient()
+		return
+	if ambient_robot >= 0:
+		if ambient_robot == selected or ambient_route.is_empty():
+			_stop_ambient()
+			return
+		var robot := robots[ambient_robot]
+		var point: Vector3 = ambient_route[0]
+		var before := robot.position
+		robot.position = before.move_toward(point, delta * 1.25)
+		if before.distance_to(robot.position) > 0.001:
+			wheels[ambient_robot].rotate_x(-delta * 4.0)
+		if robot.position.distance_to(point) < 0.01:
+			ambient_route.pop_front()
+		return
+	ambient_wait -= delta
+	if ambient_wait > 0:
+		return
+	ambient_wait = 5.0
+	for attempt in range(ROBOT_IDS.size()):
+		var i := ambient_cursor % ROBOT_IDS.size()
+		ambient_cursor += 1
+		if i == selected or not roster.is_active(ROBOT_IDS[i]):
+			continue
+		var target := Vector3(float(i - 1) * 1.5, 0, 0.5 if fmod(face_clock, 20.0) < 10.0 else 1.5)
+		var plan := Navigation.new()
+		for j in range(desks.size()):
+			if desks[j].visible:
+				plan.block_box(desks[j].position, Vector2(1.35, 0.85))
+		plan.block_box(Vector3(3.5, 0, 2.4), Vector2(1.35, 1.1))
+		for j in range(robots.size()):
+			if i != j and robots[j].visible:
+				plan.block_box(robots[j].position, Vector2(0.85, 0.85))
+		ambient_route = plan.route(robots[i].position, target)
+		if ambient_route.size() > 1:
+			ambient_robot = i
+			return
+
