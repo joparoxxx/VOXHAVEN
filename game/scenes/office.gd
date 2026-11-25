@@ -14,6 +14,7 @@ var allow_png: CheckBox
 var profile_label: Label
 var history_label: RichTextLabel
 var manager_tool: OptionButton
+var delegate_button: Button
 var robot_dialog_status: Label
 var profile_button: Button
 var skills = Skills.new()
@@ -306,10 +307,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	_select_cubot(nearest)
 	get_viewport().set_input_as_handled()
 
-func _queue(tool: String, payload: String) -> void:
+func _queue(tool: String, payload: String, requested_by: String = "") -> void:
 	if busy or selected < 0:
 		return
-	pending_id = engine.enqueue(ROBOT_IDS[selected], tool, payload)
+	pending_id = engine.enqueue(ROBOT_IDS[selected], tool, payload, requested_by)
 	if pending_id.is_empty():
 		status.text = "Task rejected: permission, input or storage error."
 		return
@@ -351,13 +352,15 @@ func _process(delta: float) -> void:
 		cancel_button.disabled = true
 		var current := pending_id
 		# The visual delay is a robot walk-up; execution itself is real.
-		while engine.get_task(current).get("status") == "queued":
-			if not engine.run_next():
-				break
+		engine.run_task(current)
 		_reset()
 
 func _on_task_changed(task: Dictionary) -> void:
-	status.text = str(task["robot_id"]).to_upper() + ": " + str(task["status"])
+	var requester := str(task.get("requested_by", ""))
+	var route := str(task["robot_id"]).to_upper()
+	if not requester.is_empty():
+		route = requester.to_upper() + " → " + route
+	status.text = route + ": " + str(task["status"])
 	if task["status"] == "succeeded":
 		status.text += "\n" + str(task["artifact"])
 		if task["tool"] == "png":
@@ -534,7 +537,7 @@ func _build_robot_dialog() -> void:
 	manager_tool.add_item("PNG")
 	manager_tool.custom_minimum_size.y = 60
 	column.add_child(manager_tool)
-	var delegate_button := Button.new()
+	delegate_button = Button.new()
 	delegate_button.custom_minimum_size.y = 60
 	delegate_button.text = "ATLAS: delegate task"
 	delegate_button.pressed.connect(_delegate_task)
@@ -557,11 +560,17 @@ func _show_robot_profile() -> void:
 	allow_text.button_pressed = roster.can_use(id, "text")
 	allow_png.button_pressed = roster.can_use(id, "png")
 	history_label.clear()
+	manager_tool.visible = id == "atlas"
+	delegate_button.visible = id == "atlas"
 	var tasks: Array = engine.history(id)
 	if tasks.is_empty():
 		history_label.add_text("No recorded tasks.")
 	for task in tasks:
-		history_label.add_text("#" + str(task["id"]) + "  " + str(task["tool"]) + "  " + str(task["status"]) + "\n")
+		var requester := str(task.get("requested_by", ""))
+		var route := str(task["robot_id"]).to_upper()
+		if not requester.is_empty():
+			route = requester.to_upper() + " → " + route
+		history_label.add_text("#" + str(task["id"]) + "  " + route + "  " + str(task["tool"]) + "  " + str(task["status"]) + "\n")
 	robot_dialog_status.text = "Local profile and rule-based task routing."
 	robot_dialog.popup_centered_ratio(0.94)
 
@@ -580,9 +589,12 @@ func _save_robot_profile() -> void:
 	robot_dialog_status.text = "Saved locally." if ok else "One or more settings failed to save. Reopen to check."
 
 func _delegate_task() -> void:
-	if busy or selected < 0:
+	if busy or selected != 0:
 		return
 	var tool := "text" if manager_tool.selected == 0 else "png"
+	if not roster.can_use("atlas", tool):
+		robot_dialog_status.text = "ATLAS lacks permission for this tool."
+		return
 	var worker: String = roster.delegate(tool)
 	if worker.is_empty():
 		robot_dialog_status.text = "No worker has permission for this tool."
@@ -592,18 +604,25 @@ func _delegate_task() -> void:
 		return
 	robot_dialog.hide()
 	_select_cubot(worker_index)
-	_queue(tool, input.text if tool == "text" else "")
+	_queue(tool, input.text if tool == "text" else "", "atlas")
 
 func _show_ai() -> void:
 	if not busy and selected >= 0:
 		ai_console.show_for(ROBOT_IDS[selected])
 
-func _ai_task(robot_id: String, tool: String, payload: String) -> void:
-	if busy or not roster.can_use(robot_id, tool):
+func _ai_task(robot_id: String, tool: String, payload: String, worker_id: String) -> void:
+	if busy or not roster.can_use(robot_id, tool) or not roster.can_use(worker_id, tool):
 		status.text = "AI tool request denied or worker busy."
 		return
-	var index := ROBOT_IDS.find(robot_id)
+	if robot_id == "atlas":
+		if worker_id != roster.delegate(tool):
+			status.text = "Worker route changed. Request a new approval."
+			return
+	elif worker_id != robot_id:
+		status.text = "Only ATLAS can delegate."
+		return
+	var index := ROBOT_IDS.find(worker_id)
 	if index < 0:
 		return
 	_select_cubot(index)
-	_queue(tool, payload)
+	_queue(tool, payload, robot_id if worker_id != robot_id else "")
