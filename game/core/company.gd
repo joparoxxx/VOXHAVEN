@@ -1,9 +1,9 @@
 extends RefCounted
 ## Local game progression, not real money or provider credits.
 const Snapshot = preload("res://core/snapshot_store.gd")
-const UPGRADES := {"plant": {"name":"Office plant","cost":25}, "lounge":{"name":"Lounge chair","cost":50}, "lamp":{"name":"Desk lamp","cost":75}}
+const UPGRADES := {"plant": {"name":"Office plant","cost":25}, "lounge":{"name":"Lounge chair","cost":50}, "lamp":{"name":"Desk lamp","cost":75}, "bookshelf":{"name":"Bookshelf","cost":80}, "whiteboard":{"name":"Whiteboard","cost":60}}
 var store
-var state := {"version":1,"company":"CUBYTE Studio","credits":100,"completed":0,"upgrades":[],"rewarded":{}}
+var state := {"version":1,"company":"CUBYTE Studio","credits":100,"completed":0,"upgrades":[],"rewarded":{},"hires":[]}
 var ready := false
 
 func _init(root: String = "user://cubyte/company") -> void:
@@ -16,6 +16,8 @@ func _init(root: String = "user://cubyte/company") -> void:
 		ready = false
 	elif saved.get("found", false):
 		var raw: Variant = JSON.parse_string(str(saved.get("value","")))
+		if raw is Dictionary and not raw.has("hires"):
+			raw["hires"] = []
 		if not _valid(raw):
 			ready = false
 		else:
@@ -29,6 +31,8 @@ func _valid(raw: Variant) -> bool:
 		if not (v is int or v is float) or float(v) != int(v) or v < 0 or v > 10000000:
 			return false
 	if not raw.get("upgrades") is Array or not raw.get("rewarded") is Dictionary or raw["rewarded"].size() > 10000:
+		return false
+	if not raw.get("hires") is Array or raw["hires"].size() > 1 or (not raw["hires"].is_empty() and raw["hires"][0] != "nova"):
 		return false
 	var seen := []
 	for id in raw["upgrades"]:
@@ -77,4 +81,18 @@ func purchase(id: String) -> bool:
 	var next := snapshot()
 	next["credits"] -= price
 	next["upgrades"].append(id)
+	return _commit(next)
+
+func level() -> int:
+	return mini(20, 1 + int(int(state["completed"]) / 5.0))
+
+func can_hire() -> bool:
+	return ready and level() >= 2 and int(state["credits"]) >= 100 and "nova" not in state["hires"]
+
+func hire_nova() -> bool:
+	if not can_hire():
+		return false
+	var next := snapshot()
+	next["credits"] -= 100
+	next["hires"].append("nova")
 	return _commit(next)
