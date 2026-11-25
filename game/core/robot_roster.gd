@@ -34,19 +34,19 @@ func get_profile(id: String) -> Dictionary:
 func set_memory(id: String, value: String) -> bool:
 	if value.to_utf8_buffer().size() > 4096:
 		return false
-	return _set(id, "memory", value)
+	return _set_profile_field(id, "memory", value)
 
 func set_personality(id: String, value: String) -> bool:
 	if value.strip_edges().is_empty() or value.to_utf8_buffer().size() > 128:
 		return false
-	return _set(id, "personality", value.strip_edges())
+	return _set_profile_field(id, "personality", value.strip_edges())
 
 func set_permission(id: String, tool: String, allowed: bool) -> bool:
 	if not _ready or not _profiles.has(id) or tool not in TOOLS:
 		return false
 	var permissions: Dictionary = _profiles[id]["permissions"].duplicate()
 	permissions[tool] = allowed
-	return _set(id, "permissions", permissions)
+	return _set_profile_field(id, "permissions", permissions)
 
 func can_use(id: String, tool: String) -> bool:
 	return _ready and _profiles.has(id) and tool in TOOLS and _profiles[id]["permissions"].get(tool, false) == true
@@ -58,7 +58,7 @@ func delegate(tool: String) -> String:
 			return id
 	return ""
 
-func _set(id: String, key: String, value: Variant) -> bool:
+func _set_profile_field(id: String, key: String, value: Variant) -> bool:
 	if not _ready or not _profiles.has(id):
 		return false
 	var previous: Variant = _profiles[id][key]
