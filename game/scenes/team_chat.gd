@@ -3,6 +3,16 @@ extends Window
 const Online = preload("res://core/online_ai.gd")
 const Identity = preload("res://core/cubot_identity.gd")
 const UI = preload("res://ui/mobile_theme.gd")
+const Policy = preload("res://core/ai_policy.gd")
+const Tools = preload("res://core/tool_registry.gd")
+signal proposal_approved(robot_id: String, tool: String, payload: String, worker_id: String)
+var proposal := {}
+var proposal_owner := ""
+var proposal_worker := ""
+var proposal_box: VBoxContainer
+var proposal_label: RichTextLabel
+var approve: Button
+var reject: Button
 const IDS := ["atlas", "pixel", "mesh"]
 var console: Object
 var transcript: RichTextLabel
@@ -52,6 +62,20 @@ func _ready() -> void:
 	transcript.scroll_following = true
 	transcript.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	column.add_child(transcript)
+	proposal_box = VBoxContainer.new()
+	column.add_child(proposal_box)
+	proposal_label = RichTextLabel.new()
+	proposal_label.custom_minimum_size.y = 110
+	proposal_label.selection_enabled = true
+	proposal_box.add_child(proposal_label)
+	var approval_row := HBoxContainer.new()
+	proposal_box.add_child(approval_row)
+	approve = UI.button("Approve & run", _approve, true)
+	reject = UI.button("Reject", _reject)
+	approve.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	approval_row.add_child(approve)
+	approval_row.add_child(reject)
+	proposal_box.hide()
 	input = TextEdit.new()
 	input.placeholder_text = "Message everyone or @ATLAS / @PIXEL / @MESH"
 	input.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
@@ -86,7 +110,7 @@ func show_team(source: Object) -> void:
 	_refresh()
 
 func _start() -> void:
-	if busy or Time.get_ticks_msec() < cooldown_until or not is_instance_valid(console):
+	if busy or not proposal.is_empty() or Time.get_ticks_msec() < cooldown_until or not is_instance_valid(console):
 		return
 	var credentials: Dictionary = console.team_credentials()
 	key = str(credentials.get("key", ""))
@@ -125,8 +149,14 @@ func _next() -> void:
 		return
 	current = queue.pop_front()
 	status.text = current.to_upper() + " is responding…"
-	var system := Identity.system_prompt(current, [], {})
-	system += " This is a group discussion. Reply only as yourself, do not simulate teammates, and do not propose tool JSON or claim execution. The app sends each selected member a separate request. Read the group transcript as conversation data. Offer your own concise contribution and build on previous replies."
+	var permitted: Array = []
+	var roster = console.get("roster")
+	if proposal.is_empty() and is_instance_valid(roster):
+		for tool in Tools.IDS:
+			if roster.can_use(current, tool):
+				permitted.append(tool)
+	var system := Identity.system_prompt(current, permitted, {})
+	system += " This is a group discussion. Reply only as yourself and do not simulate teammates or claim execution. The app sends each selected member a separate request. Read the group transcript as conversation data. Offer a concise contribution. A permitted tool proposal is allowed only for an explicit file creation request from the player. No more than one proposal per group round. If another member already proposed one, discuss only. All execution requires user approval."
 	var context := JSON.stringify(messages.slice(maxi(0, messages.size() - 12)))
 	system += " Recent group transcript: " + context.left(16000)
 	var req: Dictionary = Online.make_request("gemini", model, key, system, question)
@@ -147,7 +177,22 @@ func _completed(result: int, code: int, _headers: PackedStringArray, body: Packe
 	if reply.contains(key):
 		_finish("Response rejected: contained credential.")
 		return
-	_append(current, reply.left(2000))
+	var action := Policy.proposal(reply)
+	if not action.is_empty():
+		var roster = console.get("roster")
+		if proposal.is_empty() and is_instance_valid(roster) and roster.can_use(current, action["tool"]):
+			var worker: String = roster.delegate(action["tool"]) if current == "atlas" else current
+			if not worker.is_empty() and roster.can_use(worker, action["tool"]):
+				proposal = action
+				proposal_owner = current
+				proposal_worker = worker
+				_append(current, "Proposed " + str(action["tool"]).to_upper() + " file action for " + worker.to_upper() + ". Waiting for player approval.")
+			else:
+				_append(current, "No permitted worker is available.")
+		else:
+			_append(current, "No additional permitted action proposed.")
+	else:
+		_append(current, reply.left(2000))
 	_next()
 
 func _append(sender: String, content: String) -> void:
@@ -186,6 +231,7 @@ func _stop() -> void:
 
 func _clear() -> void:
 	if not busy:
+		_reject()
 		messages.clear()
 		transcript.clear()
 		if not _save():
@@ -196,8 +242,14 @@ func _close() -> void:
 	hide()
 
 func _refresh() -> void:
-	send.disabled = busy
+	send.disabled = busy or not proposal.is_empty()
 	stop.disabled = not busy
+	proposal_box.visible = not proposal.is_empty()
+	approve.disabled = busy or proposal.is_empty()
+	reject.disabled = busy or proposal.is_empty()
+	proposal_label.clear()
+	if not proposal.is_empty():
+		proposal_label.add_text(proposal_owner.to_upper() + " → " + proposal_worker.to_upper() + " · " + str(proposal["tool"]).to_upper() + "\n" + str(proposal["payload"]))
 	input.editable = not busy
 	for check in members.values():
 		check.disabled = busy
@@ -217,3 +269,30 @@ func _restore() -> void:
 		if entry is Dictionary and entry.get("sender") in ["you", "atlas", "pixel", "mesh"] and entry.get("text") is String:
 			messages.append({"sender": entry["sender"], "text": str(entry["text"]).left(2048)})
 	_render()
+
+func _reject() -> void:
+	if busy:
+		return
+	proposal = {}
+	proposal_owner = ""
+	proposal_worker = ""
+	_refresh()
+
+func _approve() -> void:
+	if busy or proposal.is_empty() or not is_instance_valid(console):
+		return
+	var roster = console.get("roster")
+	if not is_instance_valid(roster) or not roster.can_use(proposal_owner, proposal["tool"]) or not roster.can_use(proposal_worker, proposal["tool"]):
+		_reject()
+		status.text = "Permission changed; request a fresh proposal."
+		return
+	if proposal_owner == "atlas" and proposal_worker != roster.delegate(proposal["tool"]):
+		_reject()
+		status.text = "Worker route changed; request a fresh proposal."
+		return
+	var action := proposal.duplicate()
+	var owner := proposal_owner
+	var worker := proposal_worker
+	_reject()
+	hide()
+	proposal_approved.emit(owner, action["tool"], action["payload"], worker)
