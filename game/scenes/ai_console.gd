@@ -44,6 +44,9 @@ var back_button: Button
 var proposal_panel: PanelContainer
 var proposal_text: RichTextLabel
 var verified := false
+var guest_wait_until := 0
+var guest_remaining := -1
+var quota_label: Label
 
 func configure(roster_: Object, skills_: Object) -> void:
 	roster = roster_
@@ -118,6 +121,13 @@ func _ready() -> void:
 	composer.add_child(cancel_button)
 	status = UI.label("", 16, UI.MUTED)
 	chat_page.add_child(status)
+	quota_label = UI.label("", 16, UI.MUTED)
+	chat_page.add_child(quota_label)
+	var quota_timer := Timer.new()
+	quota_timer.wait_time = 0.25
+	quota_timer.timeout.connect(_update_quota_display)
+	add_child(quota_timer)
+	quota_timer.start()
 	settings_page = VBoxContainer.new()
 	settings_page.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	root.add_child(settings_page)
@@ -164,8 +174,8 @@ func _ready() -> void:
 	share_context.custom_minimum_size.y = 60
 	share_context.text = "Share extra context"
 	fields.add_child(share_context)
-	fields.add_child(UI.label("Allows sending this Cubot’s memory, skills and recent chat to OpenAI.", 16, UI.MUTED))
-	fields.add_child(UI.label("Guest AI uses CUBYTE’s server and daily limits. Messages go to OpenAI. Personal API requests use your own credits. Extra context is optional.", 16, UI.MUTED))
+	fields.add_child(UI.label("Allows sending this Cubot’s memory, skills and recent chat to the selected AI provider.", 16, UI.MUTED))
+	fields.add_child(UI.label("Guest AI uses CUBYTE’s server and shared daily limits. Messages may go to Google Gemini. Free-tier providers may use submitted content for improvement. Personal OpenAI requests use your own credits. Extra context is optional.", 16, UI.MUTED))
 	connection = UI.label("Not tested", 18)
 	fields.add_child(connection)
 	settings_status = UI.label("", 16, UI.MUTED)
@@ -210,7 +220,7 @@ func show_settings_for(id: String) -> void:
 		pending = {}
 		prompt_box.clear()
 		heading.text = "AI settings"
-		subtitle.text = "OpenAI · Shared by all Cubots"
+		subtitle.text = "AI access · Shared by all Cubots"
 		title = "CUBYTE | AI settings"
 		popup_centered_ratio(0.96)
 	_show_settings()
@@ -255,7 +265,7 @@ func _clear_key() -> void:
 	settings_status.text = "Key cleared."
 
 func _ask() -> void:
-	if online_busy or robot_id.is_empty():
+	if online_busy or robot_id.is_empty() or (not personal_mode.button_pressed and Time.get_ticks_msec() < guest_wait_until):
 		return
 	question = prompt_box.text.strip_edges()
 	if question.is_empty() or question.to_utf8_buffer().size() > 2048:
@@ -359,7 +369,7 @@ func _cancel() -> void:
 	online_busy = false
 	online_operation = ""
 	request_key = ""
-	status.text = "Stopped locally. Provider may still charge."
+	status.text = "Stopped locally. Request may still count toward quota."
 	settings_status.text = status.text
 	_draw_history()
 	_update_buttons()
@@ -386,6 +396,8 @@ func _online_completed(result: int, code: int, _headers: PackedStringArray, body
 		_draw_history()
 		_update_buttons()
 		return
+	if not personal_mode.button_pressed:
+		_read_guest_quota(code, _headers, body)
 	if not personal_mode.button_pressed and code == 401:
 		guest.id_token = ""
 	online_busy = false
@@ -411,7 +423,7 @@ func _online_completed(result: int, code: int, _headers: PackedStringArray, body
 		if personal_mode.button_pressed:
 			status.text = str(parsed.get("error", "OpenAI error."))
 		else:
-			status.text = "Daily guest AI limit reached. Try again tomorrow." if code == 429 else "Guest AI unavailable. Try again later."
+			status.text = _guest_error(code, body)
 		settings_status.text = status.text
 	request_key = ""
 	_draw_history()
@@ -479,10 +491,55 @@ func _update_buttons() -> void:
 	clear_key_button.disabled = online_busy
 	back_button.disabled = online_busy
 	prompt_box.editable = not online_busy
-	ask_button.disabled = online_busy
+	_update_quota_display()
 	cancel_button.visible = online_busy and online_operation == "ask"
 	approve_button.disabled = online_busy or pending.is_empty()
 	reject_button.disabled = online_busy
+
+func _read_guest_quota(code: int, headers: PackedStringArray, body: PackedByteArray) -> void:
+	var wait := 0
+	for header in headers:
+		var pair := header.split(":", false, 1)
+		if pair.size() != 2:
+			continue
+		match pair[0].strip_edges().to_lower():
+			"x-cubyte-cooldown":
+				wait = maxi(wait, clampi(int(pair[1]), 0, 300))
+			"x-cubyte-remaining":
+				guest_remaining = maxi(0, int(pair[1]))
+	if code == 429:
+		var data: Variant = JSON.parse_string(body.get_string_from_utf8())
+		if data is Dictionary:
+			wait = maxi(wait, clampi(int(data.get("retry_after", 1)), 1, 86400))
+	guest_wait_until = maxi(guest_wait_until, Time.get_ticks_msec() + wait * 1000)
+
+func _guest_error(code: int, body: PackedByteArray) -> String:
+	if code != 429:
+		return "Guest AI unavailable. Try again later."
+	var data: Variant = JSON.parse_string(body.get_string_from_utf8())
+	if data is Dictionary:
+		match str(data.get("error", "")):
+			"CHAT_COOLDOWN":
+				return "Wait before sending another message."
+			"CHAT_IN_PROGRESS":
+				return "A Cubot is still working on your last message."
+			"GLOBAL_RATE_LIMIT":
+				return "The office is busy. Try again shortly."
+	return "Daily guest AI limit reached."
+
+func _update_quota_display() -> void:
+	if not is_instance_valid(quota_label):
+		return
+	var is_guest := not personal_mode.button_pressed
+	var seconds := maxi(0, ceili(float(guest_wait_until - Time.get_ticks_msec()) / 1000.0))
+	var waiting := is_guest and seconds > 0
+	ask_button.disabled = online_busy or waiting
+	ask_button.text = ("Wait %ds" % seconds) if waiting and seconds < 120 else ("Wait" if waiting else "Send")
+	quota_label.visible = is_guest
+	var remaining_text := "Daily messages left: %d" % guest_remaining if guest_remaining >= 0 else "Guest AI · shared daily quota"
+	if waiting:
+		remaining_text += "  |  Retry in %ds" % seconds if seconds < 120 else "  |  Temporarily limited"
+	quota_label.text = remaining_text
 
 func _exit_tree() -> void:
 	if online_busy and is_instance_valid(http):
