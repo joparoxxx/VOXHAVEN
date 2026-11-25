@@ -83,6 +83,15 @@ var ambient_route: Array[Vector3] = []
 var ambient_wait := 5.0
 var ambient_cursor := 0
 var face_update_wait := 0.0
+var ambient_enabled := true
+var sound_enabled := true
+var sound_player: AudioStreamPlayer
+var tones := {}
+var decoration_slot := 0
+var idle_check: CheckBox
+var sound_check: CheckBox
+var interaction_until := 0.0
+var interaction_ids: Array[int] = []
 const Snapshot = preload("res://core/snapshot_store.gd")
 var layout_store = Snapshot.new("user://cubyte/office", "layout.json")
 var build_dialog: Window
@@ -103,6 +112,7 @@ func _ready() -> void:
 	engine.set_permission_checker(Callable(roster, "can_use"))
 	_build_office()
 	_build_ui()
+	_init_audio()
 	engine.task_changed.connect(_on_task_changed)
 	if not engine.is_ready() or not roster.is_ready():
 		status.text = "Local storage unavailable. Tasks disabled."
@@ -215,6 +225,13 @@ func _build_robot(position_: Vector3, color: Color) -> void:
 	robot.add_child(roller)
 	wheels.append(roller)
 	robot_bodies.append(_box(robot, Vector3(0.82, 0.82, 0.82), Vector3(0, 0.79, 0), color))
+	_box(robot, Vector3(0.7, 0.09, 0.7), Vector3(0, 1.245, 0), color.lightened(0.25))
+	_box(robot, Vector3(0.62, 0.10, 0.62), Vector3(0, 0.34, 0), Color("#263544"))
+	for side in [-1, 1]:
+		_box(robot, Vector3(0.035, 0.35, 0.26), Vector3(side * 0.43, 0.82, -0.14), Color("#304154"))
+		for slit in range(3):
+			_box(robot, Vector3(0.038, 0.025, 0.17), Vector3(side * 0.45, 0.72 + slit * 0.075, -0.14), Color("#8ba9b6"))
+	_box(robot, Vector3(0.14, 0.12, 0.06), Vector3(-0.22, 1.08, -0.43), Color("#a7e7cb"))
 	_box(robot, Vector3(0.65, 0.56, 0.04), Vector3(0, 0.82, 0.43), Color("#101b29"))
 	var pair: Array[MeshInstance3D] = []
 	for side in [-1, 1]:
@@ -555,6 +572,8 @@ func _update_faces() -> void:
 			face_states[i] = "idle"
 			face_until[i] = 0.0
 		var state: String = face_states[i]
+		if face_clock < interaction_until and i in interaction_ids and state == "idle":
+			state = "greeting"
 		if i == selected or state != "idle":
 			last_active[i] = face_clock
 		elif face_clock - last_active[i] > 60.0:
@@ -578,6 +597,9 @@ func _update_faces() -> void:
 			color = Color("#ff7777")
 		elif state == "sleeping":
 			scale_y = 0.12
+		elif state == "greeting":
+			scale_y = 0.55
+			color = Color("#f5d998")
 		for eye in eyes[i]:
 			eye.scale.y = scale_y
 			eye.material_override.albedo_color = color
@@ -597,6 +619,7 @@ func _on_task_changed(task: Dictionary) -> void:
 	if worker >= 0 and task["status"] in ["succeeded", "failed", "cancelled", "interrupted"]:
 		face_states[worker] = "success" if task["status"] == "succeeded" else ("idle" if task["status"] == "cancelled" else "error")
 		face_until[worker] = face_clock + 3.0
+		_play_tone("success" if task["status"] == "succeeded" else ("cancel" if task["status"] == "cancelled" else "error"))
 	if task["status"] == "succeeded":
 		status.text += "\n" + str(task["artifact"])
 		if task["tool"] == "png":
@@ -957,6 +980,11 @@ func _restore_layout() -> void:
 		assigned.append(int(stations[i]))
 		if not colors[i] is String or not Color.html_is_valid(colors[i]):
 			return
+	var variant_slot: Variant = raw.get("decor_slot", 0)
+	if (variant_slot is int or variant_slot is float) and int(variant_slot) in [0, 1]:
+		decoration_slot = int(variant_slot)
+	ambient_enabled = raw.get("ambient", true) == true
+	sound_enabled = raw.get("sound", true) == true
 	for i in range(3):
 		desks[i].position.z = float(offsets[i])
 		workstation_ids[i] = assigned[i]
@@ -968,7 +996,7 @@ func _save_layout() -> bool:
 	for i in range(3):
 		offsets.append(desks[i].position.z)
 		colors.append(robot_bodies[i].material_override.albedo_color.to_html(false))
-	return layout_store.write("layout", JSON.stringify({"version": 1, "desks": offsets, "stations": workstation_ids.slice(0, 3), "colors": colors}))
+	return layout_store.write("layout", JSON.stringify({"version": 1, "desks": offsets, "stations": workstation_ids.slice(0, 3), "colors": colors, "decor_slot": decoration_slot, "ambient": ambient_enabled, "sound": sound_enabled}))
 
 func _build_layout_dialog() -> void:
 	build_dialog = Window.new()
@@ -1000,6 +1028,17 @@ func _build_layout_dialog() -> void:
 	column.add_child(color_picker)
 	robot_picker.item_selected.connect(_layout_robot_selected)
 	column.add_child(UI.button("Apply robot color", _apply_robot_color))
+	column.add_child(UI.button("Swap wall decoration layout", _swap_decorations))
+	idle_check = CheckBox.new()
+	idle_check.text = "Autonomous robot patrols"
+	idle_check.button_pressed = ambient_enabled
+	idle_check.toggled.connect(_set_ambient)
+	column.add_child(idle_check)
+	sound_check = CheckBox.new()
+	sound_check.text = "Task sound effects"
+	sound_check.button_pressed = sound_enabled
+	sound_check.toggled.connect(_set_sound)
+	column.add_child(sound_check)
 	column.add_child(UI.button("Zoom in", func(): office_camera.size = maxf(6.0, office_camera.size - 1.5)))
 	column.add_child(UI.button("Zoom out", func(): office_camera.size = minf(18.0, office_camera.size + 1.5)))
 	column.add_child(UI.button("Reset camera", func(): _reset_camera()))
@@ -1164,16 +1203,28 @@ func _refresh_decorations() -> void:
 		decorations.remove_child(child)
 		child.queue_free()
 	var upgrades: Array = company.snapshot()["upgrades"]
+	var plant_x := -4.3 if decoration_slot == 0 else 4.3
+	var lamp_x := -plant_x
 	if "plant" in upgrades:
-		_box(decorations, Vector3(0.45, 0.45, 0.45), Vector3(-4.3, 0.225, -3.35), Color("#ad7952"))
-		_box(decorations, Vector3(0.65, 0.65, 0.65), Vector3(-4.3, 0.75, -3.35), Color("#468b58"))
+		_box(decorations, Vector3(0.45, 0.45, 0.45), Vector3(plant_x, 0.225, -3.35), Color("#ad7952"))
+		_box(decorations, Vector3(0.65, 0.65, 0.65), Vector3(plant_x, 0.75, -3.35), Color("#468b58"))
 	if "lounge" in upgrades:
 		_box(decorations, Vector3(1.2, 0.4, 0.8), Vector3(3.5, 0.35, 2.4), Color("#527d82"))
 		_box(decorations, Vector3(1.2, 0.65, 0.18), Vector3(3.5, 0.65, 2.75), Color("#36585d"))
 	if "lamp" in upgrades:
-		_box(decorations, Vector3(0.2, 0.2, 0.2), Vector3(4.3, 0.1, -3.3), Color("#586475"))
-		_box(decorations, Vector3(0.08, 1.5, 0.08), Vector3(4.3, 0.85, -3.3), Color("#738297"))
-		_box(decorations, Vector3(0.4, 0.18, 0.4), Vector3(4.3, 1.7, -3.3), Color("#f5d998"))
+		_box(decorations, Vector3(0.2, 0.2, 0.2), Vector3(lamp_x, 0.1, -3.3), Color("#586475"))
+		_box(decorations, Vector3(0.08, 1.5, 0.08), Vector3(lamp_x, 0.85, -3.3), Color("#738297"))
+		_box(decorations, Vector3(0.4, 0.18, 0.4), Vector3(lamp_x, 1.7, -3.3), Color("#f5d998"))
+	if "bookshelf" in upgrades:
+		_box(decorations, Vector3(0.25, 1.5, 1.25), Vector3(-4.75, 0.75, -0.5), Color("#66574e"))
+		for row in range(3):
+			_box(decorations, Vector3(0.28, 0.055, 1.2), Vector3(-4.61, 0.25 + row * 0.45, -0.5), Color("#d1a97d"))
+			for book in range(4):
+				_box(decorations, Vector3(0.16, 0.32, 0.19), Vector3(-4.57, 0.42 + row * 0.45, -0.92 + book * 0.23), Color.from_hsv(float(book + row) / 7.0, 0.45, 0.75))
+	if "whiteboard" in upgrades:
+		_box(decorations, Vector3(2.2, 0.75, 0.06), Vector3(0, 1.47, -3.89), Color("#e5edef"))
+		for line in range(3):
+			_box(decorations, Vector3(1.25 - line * 0.15, 0.035, 0.015), Vector3(-0.15, 1.68 - line * 0.17, -3.85), Color("#6d8e99"))
 
 func _show_workflow_builder() -> void:
 	if not busy and not ai_console.online_busy:
@@ -1206,11 +1257,13 @@ func _modal_open() -> bool:
 	return false
 
 func _update_ambient(delta: float) -> void:
-	if _modal_open():
+	if not ambient_enabled or _modal_open():
 		_stop_ambient()
 		return
 	if ambient_robot >= 0:
 		if ambient_robot == selected or ambient_route.is_empty():
+			if ambient_route.is_empty() and ambient_robot != selected:
+				_greet_nearby(ambient_robot)
 			_stop_ambient()
 			return
 		var robot := robots[ambient_robot]
@@ -1245,3 +1298,60 @@ func _update_ambient(delta: float) -> void:
 			ambient_robot = i
 			return
 
+
+func _greet_nearby(index: int) -> void:
+	for i in range(robots.size()):
+		if i != index and robots[i].visible and robots[i].position.distance_to(robots[index].position) < 2.0:
+			interaction_ids = [index, i]
+			interaction_until = face_clock + 2.0
+			last_active[index] = face_clock
+			last_active[i] = face_clock
+			return
+
+func _swap_decorations() -> void:
+	var old := decoration_slot
+	decoration_slot = 1 - decoration_slot
+	if not _save_layout():
+		decoration_slot = old
+		layout_status.text = "Could not save decoration layout."
+		return
+	_refresh_decorations()
+	layout_status.text = "Wall decorations rearranged."
+
+func _set_ambient(value: bool) -> void:
+	var old := ambient_enabled
+	ambient_enabled = value
+	if not _save_layout():
+		ambient_enabled = old
+		idle_check.set_pressed_no_signal(old)
+	_stop_ambient()
+
+func _set_sound(value: bool) -> void:
+	var old := sound_enabled
+	sound_enabled = value
+	if not _save_layout():
+		sound_enabled = old
+		sound_check.set_pressed_no_signal(old)
+
+func _init_audio() -> void:
+	sound_player = AudioStreamPlayer.new()
+	sound_player.volume_db = -18.0
+	add_child(sound_player)
+	for entry in [["success", 660.0], ["error", 180.0], ["cancel", 330.0]]:
+		var wav := AudioStreamWAV.new()
+		wav.format = AudioStreamWAV.FORMAT_16_BITS
+		wav.mix_rate = 22050
+		var samples := PackedByteArray()
+		var count := 3307
+		samples.resize(count * 2)
+		for i in range(count):
+			var fade := minf(1.0, float(i) / 220.0) * (1.0 - float(i) / float(count))
+			var value := int(sin(TAU * float(entry[1]) * float(i) / 22050.0) * fade * 10000.0)
+			samples.encode_s16(i * 2, value)
+		wav.data = samples
+		tones[entry[0]] = wav
+
+func _play_tone(id: String) -> void:
+	if sound_enabled and is_instance_valid(sound_player) and tones.has(id):
+		sound_player.stream = tones[id]
+		sound_player.play()
