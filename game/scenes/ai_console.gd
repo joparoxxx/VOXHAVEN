@@ -709,3 +709,12 @@ func _exit_tree() -> void:
 	if online_busy and is_instance_valid(http):
 		http.cancel_request()
 	request_key = ""
+
+# Team chat borrows only the explicitly configured Gemini session credentials.
+func team_credentials() -> Dictionary:
+	if online_busy or local_ai.busy:
+		return {}
+	if active_provider == "gemini":
+		return {"key": key_editor.text.strip_edges(), "model": model_editor.text.strip_edges()}
+	var saved: Dictionary = session_profiles.get("gemini", {})
+	return {"key": str(saved.get("key", "")).strip_edges(), "model": str(saved.get("model", "")).strip_edges()}
