@@ -10,7 +10,7 @@ const DEFAULTS := {
 	"mesh": {"role": "3D Artist", "personality": "Methodical", "specialization": "Geometry (future)"}
 }
 const Snapshot = preload("res://core/snapshot_store.gd")
-var _storage: RefCounted
+var _storage
 var _root: String
 var _profiles := {}
 var _ready := false
@@ -21,7 +21,9 @@ func _init(root: String = "user://cubyte/robots") -> void:
 		var profile: Dictionary = DEFAULTS[id].duplicate(true)
 		profile["id"] = id
 		profile["memory"] = ""
-		profile["permissions"] = {"text": true, "png": true}
+		profile["permissions"] = {}
+		for tool in TOOLS:
+			profile["permissions"][tool] = tool in ["text", "png"]
 		_profiles[id] = profile
 	_storage = Snapshot.new(root, "profiles.json")
 	_ready = _storage.ready
@@ -62,7 +64,7 @@ func can_use(id: String, tool: String) -> bool:
 	return _ready and _profiles.has(id) and tool in TOOLS and _profiles[id]["permissions"].get(tool, false) == true
 
 func delegate(tool: String) -> String:
-	var candidates := ["pixel", "mesh"] if tool == "png" else ["mesh", "pixel"]
+	var candidates := ["pixel", "mesh"] if tool in ["png", "svg"] else ["mesh", "pixel"]
 	for id in candidates:
 		if can_use(id, tool):
 			return id
@@ -101,6 +103,8 @@ func _load() -> bool:
 		profile["memory"] = p["memory"]
 		profile["personality"] = p["personality"]
 		for tool in TOOLS:
+			if not p["permissions"].has(tool):
+				continue
 			if not p["permissions"].get(tool) is bool:
 				return false
 			profile["permissions"][tool] = p["permissions"][tool]
