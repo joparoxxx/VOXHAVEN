@@ -390,7 +390,7 @@ func _ask() -> void:
 		status.text = "Enter a message up to 2048 UTF-8 bytes."
 		return
 	var permitted: Array = []
-	for tool in ["text", "png"]:
+	for tool in preload("res://core/tool_registry.gd").IDS:
 		if roster.can_use(robot_id, tool):
 			permitted.append(tool)
 	var profile: Dictionary = roster.get_profile(robot_id)
