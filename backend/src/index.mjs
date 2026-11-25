@@ -136,8 +136,10 @@ export default {async fetch(req,env) {
     if(!response.ok){
       let reason="UPSTREAM_ERROR";
       try {
-        const code=(await response.json())?.error?.code;
-        if(["invalid_api_key","insufficient_quota","rate_limit_exceeded","model_not_found","unsupported_parameter","unsupported_value","invalid_request_error","billing_hard_limit_reached","invalid_model","account_deactivated","project_not_found","permission_denied","country_not_supported_region_territory"].includes(code))reason=code.toUpperCase();
+        const detail=(await response.json())?.error;
+        const allowed=["invalid_api_key","insufficient_quota","rate_limit_exceeded","model_not_found","unsupported_parameter","unsupported_value","invalid_request_error","billing_hard_limit_reached","invalid_model","account_deactivated","project_not_found","permission_denied","country_not_supported_region_territory","credit_balance_exhausted","organization_usage_limit_exceeded","organization_spend_limit_exceeded","project_spend_limit_exceeded"];
+        const code=allowed.includes(detail?.code)?detail.code:allowed.includes(detail?.type)?detail.type:null;
+        if(code)reason=code.toUpperCase();
       } catch {}
       if(reason==="UPSTREAM_ERROR"){
         reason=({400:"BAD_REQUEST",401:"AUTH_FAILED",403:"ACCESS_DENIED",404:"NOT_FOUND",429:"RATE_OR_QUOTA"})[response.status]||reason;
