@@ -9,6 +9,7 @@ const Roster = preload("res://core/robot_roster.gd")
 const AIConsole = preload("res://scenes/ai_console.gd")
 const TeamChat = preload("res://scenes/team_chat.gd")
 var team_chat: Window
+var team_task_id := ""
 const Workspace = preload("res://scenes/workspace.gd")
 var workspace: Window
 const UI = preload("res://ui/mobile_theme.gd")
@@ -318,7 +319,7 @@ func _build_ui() -> void:
 	team_chat = TeamChat.new()
 	team_chat.hide()
 	add_child(team_chat)
-	team_chat.connect("proposal_approved", _ai_task)
+	team_chat.connect("proposal_approved", _team_task)
 	workspace = Workspace.new()
 	workspace.hide()
 	add_child(workspace)
@@ -534,6 +535,9 @@ func _on_task_changed(task: Dictionary) -> void:
 	if not requester.is_empty():
 		route = requester.to_upper() + " → " + route
 	status.text = route + ": " + str(task["status"])
+	if str(task["id"]) == team_task_id and task["status"] in ["succeeded", "failed", "cancelled", "interrupted"]:
+		team_chat.call("record_task_result", task)
+		team_task_id = ""
 	var worker := ROBOT_IDS.find(str(task["robot_id"]))
 	if worker >= 0 and task["status"] in ["succeeded", "failed", "cancelled", "interrupted"]:
 		face_states[worker] = "success" if task["status"] == "succeeded" else ("idle" if task["status"] == "cancelled" else "error")
@@ -1068,3 +1072,9 @@ func _reset_camera() -> void:
 	office_camera.position = Vector3(8, 9, 12)
 	camera_target = Vector3(0, 1, 0)
 	office_camera.look_at(camera_target)
+
+func _team_task(robot_id: String, tool: String, payload: String, worker_id: String) -> void:
+	var previous := pending_id
+	_ai_task(robot_id, tool, payload, worker_id)
+	if not pending_id.is_empty() and pending_id != previous:
+		team_task_id = pending_id
