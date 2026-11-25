@@ -1,7 +1,8 @@
 extends RefCounted
 ## Local profiles and explicit permissions. No model inference.
 const IDS := ["atlas", "pixel", "mesh"]
-const TOOLS := ["text", "png"]
+const ToolRegistry = preload("res://core/tool_registry.gd")
+const TOOLS = ToolRegistry.IDS
 const DEFAULTS := {
 	"atlas": {"role": "Manager", "personality": "Organized", "specialization": "Coordination"},
 	"pixel": {"role": "Designer", "personality": "Creative", "specialization": "PNG"},
