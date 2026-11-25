@@ -212,7 +212,7 @@ func _build_ui() -> void:
 	tools_header.add_child(UI.button("Close", _toggle_tools))
 	column.add_child(UI.label("Create files without AI.", 16, UI.MUTED))
 	input = LineEdit.new()
-	input.custom_minimum_size.y = 48
+	input.custom_minimum_size.y = 60
 	input.placeholder_text = "Text to save"
 	input.max_length = 2048
 	column.add_child(input)
@@ -376,18 +376,20 @@ func _build_skill_dialog() -> void:
 	skill_source.text = "---\nname: write-note\ndescription: Creates a local text note.\n---\n# Workflow\nSave the requested text."
 	column.add_child(skill_source)
 	var import_button := Button.new()
-	import_button.custom_minimum_size.y = 48
+	import_button.custom_minimum_size.y = 60
 	import_button.text = "Import pasted SKILL.md"
 	import_button.pressed.connect(_import_skill)
 	column.add_child(import_button)
 	skill_picker = OptionButton.new()
+	skill_picker.custom_minimum_size.y = 60
 	column.add_child(skill_picker)
 	tool_picker = OptionButton.new()
 	tool_picker.add_item("TXT (native text)")
 	tool_picker.add_item("PNG (native sample image)")
+	tool_picker.custom_minimum_size.y = 60
 	column.add_child(tool_picker)
 	var equip_button := Button.new()
-	equip_button.custom_minimum_size.y = 48
+	equip_button.custom_minimum_size.y = 60
 	equip_button.text = "Equip selected skill and tool"
 	equip_button.pressed.connect(_equip_skill)
 	column.add_child(equip_button)
@@ -473,6 +475,7 @@ func _build_robot_dialog() -> void:
 	column.add_child(profile_label)
 	personality_editor = LineEdit.new()
 	personality_editor.placeholder_text = "Personality"
+	personality_editor.custom_minimum_size.y = 60
 	personality_editor.max_length = 128
 	column.add_child(personality_editor)
 	memory_editor = TextEdit.new()
@@ -489,7 +492,7 @@ func _build_robot_dialog() -> void:
 	allow_png.text = "Allow PNG"
 	permissions.add_child(allow_png)
 	var save := Button.new()
-	save.custom_minimum_size.y = 48
+	save.custom_minimum_size.y = 60
 	save.text = "Save profile and permissions"
 	save.pressed.connect(_save_robot_profile)
 	column.add_child(save)
@@ -503,9 +506,10 @@ func _build_robot_dialog() -> void:
 	manager_tool = OptionButton.new()
 	manager_tool.add_item("TXT")
 	manager_tool.add_item("PNG")
+	manager_tool.custom_minimum_size.y = 60
 	column.add_child(manager_tool)
 	var delegate_button := Button.new()
-	delegate_button.custom_minimum_size.y = 48
+	delegate_button.custom_minimum_size.y = 60
 	delegate_button.text = "ATLAS: delegate task"
 	delegate_button.pressed.connect(_delegate_task)
 	column.add_child(delegate_button)
