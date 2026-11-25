@@ -85,6 +85,9 @@ var ambient_cursor := 0
 var face_update_wait := 0.0
 var ambient_enabled := true
 var sound_enabled := true
+var low_power := false
+var power_check: CheckBox
+var box_meshes := {}
 var sound_player: AudioStreamPlayer
 var tones := {}
 var decoration_slot := 0
@@ -113,6 +116,7 @@ func _ready() -> void:
 	_build_office()
 	_build_ui()
 	_init_audio()
+	Engine.max_fps = 30 if low_power else 60
 	engine.task_changed.connect(_on_task_changed)
 	if not engine.is_ready() or not roster.is_ready():
 		status.text = "Local storage unavailable. Tasks disabled."
@@ -120,8 +124,11 @@ func _ready() -> void:
 		run_png.disabled = true
 
 func _box(parent: Node3D, size: Vector3, position_: Vector3, color: Color) -> MeshInstance3D:
-	var mesh := BoxMesh.new()
-	mesh.size = size
+	var mesh: BoxMesh = box_meshes.get(size)
+	if mesh == null:
+		mesh = BoxMesh.new()
+		mesh.size = size
+		box_meshes[size] = mesh
 	var node := MeshInstance3D.new()
 	node.mesh = mesh
 	node.position = position_
@@ -217,6 +224,8 @@ func _build_robot(position_: Vector3, color: Color) -> void:
 	var sphere := SphereMesh.new()
 	sphere.radius = 0.23
 	sphere.height = 0.46
+	sphere.radial_segments = 16
+	sphere.rings = 8
 	roller.mesh = sphere
 	roller.position.y = 0.23
 	var mat := StandardMaterial3D.new()
@@ -985,6 +994,13 @@ func _restore_layout() -> void:
 		decoration_slot = int(variant_slot)
 	ambient_enabled = raw.get("ambient", true) == true
 	sound_enabled = raw.get("sound", true) == true
+	low_power = raw.get("low_power", false) == true
+	var desk_x: Variant = raw.get("desk_x", [])
+	if desk_x is Array and desk_x.size() == 3:
+		for i in range(3):
+			var center := float(i - 1) * 2.7
+			if (desk_x[i] is int or desk_x[i] is float) and absf(float(desk_x[i]) - center) <= 0.25:
+				desks[i].position.x = float(desk_x[i])
 	for i in range(3):
 		desks[i].position.z = float(offsets[i])
 		workstation_ids[i] = assigned[i]
@@ -993,10 +1009,12 @@ func _restore_layout() -> void:
 func _save_layout() -> bool:
 	var offsets := []
 	var colors := []
+	var x_offsets := []
 	for i in range(3):
 		offsets.append(desks[i].position.z)
+		x_offsets.append(desks[i].position.x)
 		colors.append(robot_bodies[i].material_override.albedo_color.to_html(false))
-	return layout_store.write("layout", JSON.stringify({"version": 1, "desks": offsets, "stations": workstation_ids.slice(0, 3), "colors": colors, "decor_slot": decoration_slot, "ambient": ambient_enabled, "sound": sound_enabled}))
+	return layout_store.write("layout", JSON.stringify({"version": 1, "desks": offsets, "stations": workstation_ids.slice(0, 3), "colors": colors, "decor_slot": decoration_slot, "ambient": ambient_enabled, "sound": sound_enabled, "desk_x": x_offsets, "low_power": low_power}))
 
 func _build_layout_dialog() -> void:
 	build_dialog = Window.new()
@@ -1014,6 +1032,8 @@ func _build_layout_dialog() -> void:
 	column.add_child(desk_picker)
 	column.add_child(UI.button("Move desk toward wall", func(): _move_desk(-1)))
 	column.add_child(UI.button("Move desk toward center", func(): _move_desk(1)))
+	column.add_child(UI.button("Nudge desk left", func(): _move_desk_x(-1)))
+	column.add_child(UI.button("Nudge desk right", func(): _move_desk_x(1)))
 	robot_picker = OptionButton.new()
 	station_picker = OptionButton.new()
 	for i in range(3):
@@ -1039,6 +1059,11 @@ func _build_layout_dialog() -> void:
 	sound_check.button_pressed = sound_enabled
 	sound_check.toggled.connect(_set_sound)
 	column.add_child(sound_check)
+	power_check = CheckBox.new()
+	power_check.text = "Battery saver (30 FPS)"
+	power_check.button_pressed = low_power
+	power_check.toggled.connect(_set_power_mode)
+	column.add_child(power_check)
 	column.add_child(UI.button("Zoom in", func(): office_camera.size = maxf(6.0, office_camera.size - 1.5)))
 	column.add_child(UI.button("Zoom out", func(): office_camera.size = minf(18.0, office_camera.size + 1.5)))
 	column.add_child(UI.button("Reset camera", func(): _reset_camera()))
@@ -1355,3 +1380,30 @@ func _play_tone(id: String) -> void:
 	if sound_enabled and is_instance_valid(sound_player) and tones.has(id):
 		sound_player.stream = tones[id]
 		sound_player.play()
+
+func _move_desk_x(direction: int) -> void:
+	var index := desk_picker.selected
+	if index < 0 or index >= 3 or busy:
+		return
+	var center := float(index - 1) * 2.7
+	var old := desks[index].position.x
+	desks[index].position.x = clampf(old + direction * 0.25, center - 0.25, center + 0.25)
+	for robot in robots:
+		if robot.visible and absf(robot.position.x - desks[index].position.x) <= 1.35 and absf(robot.position.z - desks[index].position.z) <= 0.85:
+			desks[index].position.x = old
+			layout_status.text = "A robot occupies that space."
+			return
+	if not _save_layout():
+		desks[index].position.x = old
+		layout_status.text = "Storage failure; desk movement reverted."
+		return
+	_rebuild_navigation()
+	layout_status.text = "Desk position saved."
+
+func _set_power_mode(value: bool) -> void:
+	var old := low_power
+	low_power = value
+	if not _save_layout():
+		low_power = old
+		power_check.set_pressed_no_signal(old)
+	Engine.max_fps = 30 if low_power else 60
