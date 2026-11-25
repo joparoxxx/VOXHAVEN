@@ -375,7 +375,7 @@ func _clear_key() -> void:
 		return
 	key_editor.clear()
 	session_profiles.erase(active_provider)
-	for id in ["atlas", "pixel", "mesh"]:
+	for id in ["atlas", "pixel", "mesh", "nova"]:
 		session_turns.erase(active_provider + ":" + id)
 	_credentials_changed("")
 	settings_status.text = "Key cleared."
