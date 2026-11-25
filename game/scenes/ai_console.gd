@@ -50,6 +50,7 @@ var proposal_panel: PanelContainer
 var proposal_text: RichTextLabel
 var verified := false
 var guest_wait_until := 0
+var auth_wait_until := 0
 var guest_remaining := -1
 var quota_label: Label
 
@@ -278,7 +279,7 @@ func _clear_key() -> void:
 	settings_status.text = "Key cleared."
 
 func _ask() -> void:
-	if online_busy or robot_id.is_empty() or (not personal_mode.button_pressed and Time.get_ticks_msec() < guest_wait_until):
+	if online_busy or robot_id.is_empty() or (not personal_mode.button_pressed and (Time.get_ticks_msec() < guest_wait_until or (not guest.has_session() and Time.get_ticks_msec() < auth_wait_until))):
 		return
 	question = prompt_box.text.strip_edges()
 	if question.is_empty() or question.to_utf8_buffer().size() > 2048:
@@ -336,6 +337,9 @@ func _send_online(kind: String, system: String, prompt: String) -> void:
 	_update_buttons()
 
 func _send_guest(kind: String, system: String, prompt: String) -> void:
+	if not guest.has_session() and Time.get_ticks_msec() < auth_wait_until:
+		settings_status.text = "Guest sign-in is temporarily limited. Try after the retry time."
+		return
 	if not guest.configured():
 		status.text = "Guest AI server is not configured yet. Local gameplay is available."
 		settings_status.text = status.text
@@ -405,8 +409,21 @@ func _online_completed(result: int, code: int, _headers: PackedStringArray, body
 		online_busy = false
 		online_operation = ""
 		if code == 429:
+			var detail: Variant = JSON.parse_string(body.get_string_from_utf8())
+			var retry := 60
 			status.text = "Guest sign-in limit reached. Chat quota is separate."
-			_read_guest_quota(code, _headers, body)
+			if detail is Dictionary:
+				retry = clampi(int(detail.get("retry_after", 60)), 1, 86400)
+				match str(detail.get("scope", "")):
+					"firebase":
+						status.text = "Firebase temporarily limits sign-ins."
+					"guest_ip":
+						status.text = "Guest registrations from this network reached the daily limit."
+					"guest_global":
+						status.text = "Office guest registration limit reached."
+					"refresh_ip", "refresh_global":
+						status.text = "Guest session refresh limit reached."
+			auth_wait_until = Time.get_ticks_msec() + retry * 1000
 		elif code == 401:
 			status.text = "Guest session rejected. Contact support."
 		else:
@@ -585,6 +602,16 @@ func _guest_error(code: int, body: PackedByteArray) -> String:
 				return "A Cubot is still working on your last message."
 			"GLOBAL_RATE_LIMIT":
 				return "The office is busy. Try again shortly."
+			"DAILY_LIMIT":
+				match str(data.get("scope", "")):
+					"chat_global":
+						return "Office shared daily AI allowance reached."
+					"chat_ip":
+						return "Daily AI allowance for this network reached."
+					"chat_user_attempts":
+						return "Your daily AI attempt limit reached."
+					"chat_user_messages":
+						return "Your daily message allowance reached."
 	return "Daily guest AI limit reached."
 
 func _update_quota_display() -> void:
@@ -592,15 +619,22 @@ func _update_quota_display() -> void:
 		return
 	var is_guest := not personal_mode.button_pressed
 	var seconds := maxi(0, ceili(float(guest_wait_until - Time.get_ticks_msec()) / 1000.0))
+	var auth_seconds := maxi(0, ceili(float(auth_wait_until - Time.get_ticks_msec()) / 1000.0)) if not guest.has_session() else 0
+	var auth_waiting := is_guest and auth_seconds > 0
 	var waiting := is_guest and seconds > 0
-	ask_button.disabled = online_busy or waiting
-	test_button.disabled = online_busy or waiting
+	ask_button.disabled = online_busy or waiting or auth_waiting
+	test_button.disabled = online_busy or auth_waiting
+	if auth_waiting:
+		seconds = maxi(seconds, auth_seconds)
+		waiting = true
 	ask_button.text = ("Wait %ds" % seconds) if waiting and seconds < 120 else ("Wait" if waiting else "Send")
 	quota_label.visible = is_guest
 	var remaining_text := "Daily messages left: %d" % guest_remaining if guest_remaining >= 0 else "Guest AI · shared daily quota"
 	if waiting:
 		remaining_text += "  |  Retry in %ds" % seconds if seconds < 120 else "  |  Temporarily limited"
 	quota_label.text = remaining_text
+	if is_guest:
+		test_button.text = "Sign-in wait %ds" % auth_seconds if auth_waiting else "Connect as guest"
 
 func _exit_tree() -> void:
 	if online_busy and is_instance_valid(http):
