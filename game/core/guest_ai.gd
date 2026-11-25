@@ -1,6 +1,6 @@
 extends RefCounted
 ## Public deployment URL only; never put OpenAI credentials here.
-const BASE_URL := ""
+const BASE_URL := "https://cubyte-gateway.cubyte.workers.dev"
 const SESSION_PATH := "user://cubyte_guest_session.json"
 var id_token := ""
 var refresh_token := ""
