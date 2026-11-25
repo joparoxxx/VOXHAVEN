@@ -56,6 +56,8 @@ jobs:
           timeout 60s Godot_v4.4.1-stable_linux.x86_64 --headless --path game --script res://tests/test_online_ai.gd 2>&1 | tee /tmp/test_online_ai.log
           if grep -E 'SCRIPT ERROR|ERROR: Failed to load script' /tmp/test_online_ai.log; then exit 1; fi
           grep -Fx 'CUBYTE online AI tests: 0 failures' /tmp/test_online_ai.log
+      - name: Guest gateway policy tests
+        run: node --test backend/tests/policy.test.mjs
       - name: Scene smoke
         run: Godot_v4.4.1-stable_linux.x86_64 --headless --path game --quit-after 10
   android-debug:
