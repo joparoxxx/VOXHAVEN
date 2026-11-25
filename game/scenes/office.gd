@@ -29,7 +29,9 @@ const ROBOT_COLORS := [Color("#d7b56d"), Color("#a48bdf"), Color("#62a9d9")]
 var engine = TaskEngine.new()
 var robots: Array[Node3D] = []
 var wheels: Array[MeshInstance3D] = []
-var selected := 0
+var selected := -1
+var cubot_actions: PanelContainer
+var tools_button: Button
 var status: Label
 var input: LineEdit
 var preview: TextureRect
@@ -176,17 +178,18 @@ func _build_ui() -> void:
 	branding.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(branding)
 	branding.add_child(UI.label("CUBYTE", 25))
-	selected_label = UI.label("ATLAS · Manager", 16, UI.MUTED)
+	selected_label = UI.label("No Cubot selected", 16, UI.MUTED)
 	branding.add_child(selected_label)
 	settings_button = UI.button("AI settings", _show_ai_settings)
 	header.add_child(settings_button)
-	var tools_button := UI.button("Tools", _toggle_tools)
+	tools_button = UI.button("Tools", _toggle_tools)
 	header.add_child(tools_button)
 	status = UI.label("Tap a Cubot to select.", 16, UI.MUTED)
 	status.max_lines_visible = 2
 	top_column.add_child(status)
 
 	var bottom := PanelContainer.new()
+	cubot_actions = bottom
 	hud.add_child(bottom)
 	bottom.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	bottom.offset_left = 12
@@ -252,25 +255,35 @@ func _build_ui() -> void:
 	ai_console.proposal_approved.connect(_ai_task)
 	_build_skill_dialog()
 	_build_robot_dialog()
-	_select_cubot(0)
+	_select_cubot(-1)
 
 func _select_cubot(index: int) -> void:
-	if busy or index < 0 or index >= ROBOT_IDS.size():
+	if busy or index < -1 or index >= ROBOT_IDS.size():
 		return
 	selected = index
 	for i in range(selection_rings.size()):
 		selection_rings[i].visible = i == index
 		cubot_labels[i].modulate = Color.WHITE if i == index else ROBOT_COLORS[i].lightened(0.25)
-	var profile: Dictionary = roster.get_profile(ROBOT_IDS[index])
-	selected_label.text = ROBOT_IDS[index].to_upper() + " · " + str(profile.get("role", ""))
+	cubot_actions.visible = index >= 0
+	tools_button.disabled = index < 0
+	if index < 0:
+		selected_label.text = "No Cubot selected"
+		tools_panel.hide()
+		status.text = "Tap a Cubot to select."
+	else:
+		var profile: Dictionary = roster.get_profile(ROBOT_IDS[index])
+		selected_label.text = ROBOT_IDS[index].to_upper() + " · " + str(profile.get("role", ""))
+		status.text = "Selected " + ROBOT_IDS[index].to_upper()
 	_refresh_binding()
 
 func _toggle_tools() -> void:
+	if selected < 0:
+		return
 	tools_panel.visible = not tools_panel.visible
 
 func _show_ai_settings() -> void:
 	if not busy:
-		ai_console.show_settings_for(ROBOT_IDS[selected])
+		ai_console.show_settings_for(ROBOT_IDS[selected] if selected >= 0 else "")
 
 func _unhandled_input(event: InputEvent) -> void:
 	if busy or not is_instance_valid(office_camera):
@@ -290,12 +303,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		if d < distance:
 			nearest = i
 			distance = d
-	if nearest >= 0:
-		_select_cubot(nearest)
-		get_viewport().set_input_as_handled()
+	_select_cubot(nearest)
+	get_viewport().set_input_as_handled()
 
 func _queue(tool: String, payload: String) -> void:
-	if busy:
+	if busy or selected < 0:
 		return
 	pending_id = engine.enqueue(ROBOT_IDS[selected], tool, payload)
 	if pending_id.is_empty():
@@ -323,8 +335,7 @@ func _reset() -> void:
 	settings_button.disabled = false
 	skill_button.disabled = false
 	profile_button.disabled = false
-	run_text.disabled = not engine.is_ready() or not roster.can_use(ROBOT_IDS[selected], "text")
-	run_png.disabled = not engine.is_ready() or not roster.can_use(ROBOT_IDS[selected], "png")
+	_refresh_binding()
 	cancel_button.disabled = true
 
 func _process(delta: float) -> void:
@@ -408,7 +419,7 @@ func _build_skill_dialog() -> void:
 	column.add_child(skill_status)
 
 func _show_skills() -> void:
-	if busy:
+	if busy or selected < 0:
 		return
 	_refresh_skill_picker()
 	skill_status.text = "Assign to " + ROBOT_IDS[selected].to_upper()
@@ -431,7 +442,7 @@ func _import_skill() -> void:
 	skill_status.text = "Imported: " + name_
 
 func _equip_skill() -> void:
-	if busy or skill_picker.selected < 0:
+	if busy or selected < 0 or skill_picker.selected < 0:
 		return
 	var name_ := skill_picker.get_item_text(skill_picker.selected)
 	var tool := "text" if tool_picker.selected == 0 else "png"
@@ -442,6 +453,11 @@ func _equip_skill() -> void:
 		skill_status.text = "Assignment rejected."
 
 func _refresh_binding() -> void:
+	if selected < 0:
+		skill_summary.text = "Select a Cubot first."
+		run_text.disabled = true
+		run_png.disabled = true
+		return
 	var binding: Dictionary = skills.get_binding(ROBOT_IDS[selected])
 	skill_summary.text = "Skill: none" if binding.is_empty() else "Skill: " + str(binding["skill"]) + " / " + str(binding["tool"])
 	if not busy:
@@ -449,7 +465,7 @@ func _refresh_binding() -> void:
 		run_png.disabled = not engine.is_ready() or not roster.can_use(ROBOT_IDS[selected], "png")
 
 func _run_skill() -> void:
-	if busy:
+	if busy or selected < 0:
 		return
 	var binding: Dictionary = skills.get_binding(ROBOT_IDS[selected])
 	if binding.is_empty():
@@ -528,7 +544,7 @@ func _build_robot_dialog() -> void:
 	column.add_child(robot_dialog_status)
 
 func _show_robot_profile() -> void:
-	if busy:
+	if busy or selected < 0:
 		return
 	var id: String = ROBOT_IDS[selected]
 	var profile: Dictionary = roster.get_profile(id)
@@ -550,6 +566,8 @@ func _show_robot_profile() -> void:
 	robot_dialog.popup_centered_ratio(0.94)
 
 func _save_robot_profile() -> void:
+	if selected < 0 or busy:
+		return
 	var id: String = ROBOT_IDS[selected]
 	if personality_editor.text.strip_edges().is_empty() or personality_editor.text.to_utf8_buffer().size() > 128 or memory_editor.text.to_utf8_buffer().size() > 4096:
 		robot_dialog_status.text = "Invalid personality or memory exceeds 4096 bytes."
@@ -562,7 +580,7 @@ func _save_robot_profile() -> void:
 	robot_dialog_status.text = "Saved locally." if ok else "One or more settings failed to save. Reopen to check."
 
 func _delegate_task() -> void:
-	if busy:
+	if busy or selected < 0:
 		return
 	var tool := "text" if manager_tool.selected == 0 else "png"
 	var worker: String = roster.delegate(tool)
@@ -577,7 +595,7 @@ func _delegate_task() -> void:
 	_queue(tool, input.text if tool == "text" else "")
 
 func _show_ai() -> void:
-	if not busy:
+	if not busy and selected >= 0:
 		ai_console.show_for(ROBOT_IDS[selected])
 
 func _ai_task(robot_id: String, tool: String, payload: String) -> void:
