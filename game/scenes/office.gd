@@ -444,6 +444,8 @@ func _build_skill_dialog() -> void:
 	skill_picker = OptionButton.new()
 	skill_picker.custom_minimum_size.y = 60
 	column.add_child(skill_picker)
+	column.add_child(UI.button("Check requirements", _check_skill))
+	column.add_child(UI.button("Export SKILL.md", _export_skill))
 	tool_picker = OptionButton.new()
 	for id in Tools.IDS:
 		tool_picker.add_item(Tools.describe(id)["label"])
@@ -702,3 +704,20 @@ func _run_queued(id: String) -> void:
 	_select_cubot(index)
 	pending_id = id
 	_start_queued()
+
+func _check_skill() -> void:
+	if skill_picker.selected < 0 or tool_picker.selected < 0:
+		return
+	var report: Dictionary = skills.dependency_report(skill_picker.get_item_text(skill_picker.selected), Tools.IDS[tool_picker.selected])
+	skill_status.text = str(report.get("reason", ""))
+
+func _export_skill() -> void:
+	if skill_picker.selected < 0:
+		return
+	var name_: String = skill_picker.get_item_text(skill_picker.selected)
+	var path: String = skills.export_file(name_)
+	if path.is_empty():
+		skill_status.text = "Export failed."
+	else:
+		DisplayServer.clipboard_set(skills.export_markdown(name_))
+		skill_status.text = "Saved to " + path + " and copied SKILL.md to clipboard."
