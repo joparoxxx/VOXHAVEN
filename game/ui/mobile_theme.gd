@@ -52,3 +52,31 @@ static func label(value: String, size: int = 19, color: Color = INK) -> Label:
 	node.add_theme_color_override("font_color", color)
 	node.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	return node
+
+# Use embedded borderless modal windows. No OS title bar or drag handle.
+static func configure_modal(window: Window) -> void:
+	window.borderless = true
+	window.unresizable = true
+	window.transient = true
+	window.exclusive = true
+	window.wrap_controls = false
+	window.min_size = Vector2i.ZERO
+
+static func show_modal(window: Window, ratio: float = 0.96) -> void:
+	configure_modal(window)
+	window.popup_centered_ratio(ratio)
+
+static func scroll_column(window: Window) -> VBoxContainer:
+	var margin := MarginContainer.new()
+	margin.theme = make_theme()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "top", "right", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 12)
+	window.add_child(margin)
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	margin.add_child(scroll)
+	var column := VBoxContainer.new()
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(column)
+	return column
