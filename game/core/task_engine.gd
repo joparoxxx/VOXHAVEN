@@ -220,7 +220,9 @@ func load_state() -> bool:
 			item["artifact"] = ""
 			item["error"] = "Previous session stopped during execution."
 		elif item["status"] == "succeeded":
-			if item.get("artifact") != expected or not FileAccess.file_exists(expected):
+			if item.get("artifact_deleted", false) == true:
+				item["artifact"] = ""
+			elif item.get("artifact") != expected or not FileAccess.file_exists(expected):
 				item["status"] = "failed"
 				item["artifact"] = ""
 				item["error"] = "Saved artifact missing or invalid."
@@ -250,7 +252,7 @@ func retry_task(id: String) -> String:
 
 func artifact_path(id: String) -> String:
 	var task := get_task(id)
-	if task.get("status") != "succeeded":
+	if task.get("status") != "succeeded" or task.get("artifact_deleted", false) == true:
 		return ""
 	var definition: Dictionary = ToolRegistry.describe(str(task.get("tool", "")))
 	if definition.is_empty():
@@ -259,3 +261,58 @@ func artifact_path(id: String) -> String:
 	if task.get("artifact") != expected or not FileAccess.file_exists(expected):
 		return ""
 	return expected
+
+func _safe_name(name_: String) -> bool:
+	if name_.is_empty() or name_.length() > 64 or name_.begins_with("."):
+		return false
+	for ch in name_:
+		if not ch in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_":
+			return false
+	return true
+
+# Rename the displayed file without breaking the canonical on-disk task identifier.
+func rename_artifact(id: String, name_: String) -> bool:
+	if not _ready or not _safe_name(name_) or artifact_path(id).is_empty():
+		return false
+	var old: Dictionary = _tasks[id].duplicate(true)
+	_tasks[id]["display_name"] = name_
+	if not _save():
+		_tasks[id] = old
+		return false
+	_notify(id)
+	return true
+
+func export_artifact(id: String) -> String:
+	var source := artifact_path(id)
+	if source.is_empty():
+		return ""
+	var task := get_task(id)
+	var name_ := str(task.get("display_name", "task-" + id))
+	if not _safe_name(name_):
+		return ""
+	var folder := _root + "/exports"
+	if DirAccess.make_dir_recursive_absolute(folder) != OK:
+		return ""
+	var target := folder + "/" + name_ + "." + str(ToolRegistry.describe(task["tool"])["extension"])
+	if FileAccess.file_exists(target):
+		return ""
+	return target if DirAccess.copy_absolute(source, target) == OK else ""
+
+func delete_artifact(id: String) -> bool:
+	var path := artifact_path(id)
+	if not _ready or path.is_empty():
+		return false
+	# Persist the tombstone first. Never delete a noncanonical path.
+	var old: Dictionary = _tasks[id].duplicate(true)
+	_tasks[id]["artifact"] = ""
+	_tasks[id]["artifact_deleted"] = true
+	if not _save():
+		_tasks[id] = old
+		return false
+	if DirAccess.remove_absolute(path) != OK:
+		_tasks[id] = old
+		if not _save():
+			_ready = false
+		return false
+	_notify(id)
+	return true
