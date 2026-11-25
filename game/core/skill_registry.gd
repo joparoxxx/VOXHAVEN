@@ -6,6 +6,7 @@ const TOOLS := ["text", "png"]
 var _root: String
 var _skills: Dictionary = {}
 var _bindings: Dictionary = {}
+var _inventory: Dictionary = {}
 var _ready := false
 
 func _init(root: String = "user://cubyte/skills") -> void:
@@ -85,12 +86,25 @@ func get_binding(robot_id: String) -> Dictionary:
 	var binding: Dictionary = _bindings.get(robot_id, {})
 	return binding.duplicate(true)
 
+func inventory(robot_id: String) -> Array:
+	var owned: Array = _inventory.get(robot_id, [])
+	return owned.duplicate()
+
 func equip(robot_id: String, name_: String, tool: String) -> bool:
 	if not _ready or robot_id.is_empty() or robot_id.length() > 64 or not _skills.has(name_) or tool not in TOOLS or (_bindings.size() >= 128 and not _bindings.has(robot_id)):
 		return false
 	var previous := get_binding(robot_id)
+	var previous_inventory := inventory(robot_id)
+	var owned := previous_inventory.duplicate()
+	if name_ not in owned:
+		owned.append(name_)
+	_inventory[robot_id] = owned
 	_bindings[robot_id] = {"skill": name_, "tool": tool}
 	if not _save():
+		if previous_inventory.is_empty():
+			_inventory.erase(robot_id)
+		else:
+			_inventory[robot_id] = previous_inventory
 		if previous.is_empty():
 			_bindings.erase(robot_id)
 		else:
@@ -103,7 +117,7 @@ func _save() -> bool:
 	var f := FileAccess.open(temp, FileAccess.WRITE)
 	if f == null:
 		return false
-	f.store_string(JSON.stringify({"version": 1, "skills": _skills, "bindings": _bindings}))
+	f.store_string(JSON.stringify({"version": 1, "skills": _skills, "bindings": _bindings, "inventory": _inventory}))
 	f.flush()
 	var ok := f.get_error() == OK
 	f.close()
@@ -136,6 +150,21 @@ func _load() -> bool:
 			return false
 		if not validated.has(binding.get("skill")) or binding.get("tool") not in TOOLS:
 			return false
+	var owned: Variant = raw.get("inventory", {})
+	if not owned is Dictionary or owned.size() > 128:
+		return false
+	for robot in owned:
+		if not robot is String or robot.is_empty() or robot.length() > 64 or not owned[robot] is Array or owned[robot].size() > 128:
+			return false
+		for name_ in owned[robot]:
+			if not name_ is String or not validated.has(name_):
+				return false
+	for robot in bindings:
+		var names: Array = owned.get(robot, [])
+		if bindings[robot]["skill"] not in names:
+			names.append(bindings[robot]["skill"])
+		owned[robot] = names
 	_skills = validated
 	_bindings = bindings
+	_inventory = owned
 	return true
