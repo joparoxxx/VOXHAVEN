@@ -85,7 +85,8 @@ func _build_office() -> void:
 	var camera := Camera3D.new()
 	camera.position = Vector3(8, 9, 12)
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = 13
+	camera.keep_aspect = Camera3D.KEEP_WIDTH
+	camera.size = 13.8
 	add_child(camera)
 	camera.look_at(Vector3(0, 1, 0))
 	camera.current = true
@@ -139,33 +140,36 @@ func _build_ui() -> void:
 	top.offset_left = 12
 	top.offset_right = -12
 	top.offset_top = 10
-	top.offset_bottom = 76
+	top.offset_bottom = 134
+	var top_column := VBoxContainer.new()
+	top.add_child(top_column)
 	var header := HBoxContainer.new()
-	top.add_child(header)
+	top_column.add_child(header)
 	var branding := VBoxContainer.new()
-	branding.custom_minimum_size.x = 180
+	branding.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(branding)
 	branding.add_child(UI.label("CUBYTE", 25))
 	selected_label = UI.label("ATLAS · Manager", 16, UI.MUTED)
 	branding.add_child(selected_label)
-	status = UI.label("Office ready", 16, UI.MUTED)
-	status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	status.max_lines_visible = 2
-	header.add_child(status)
 	settings_button = UI.button("AI settings", _show_ai_settings)
 	header.add_child(settings_button)
 	var tools_button := UI.button("Tools", _toggle_tools)
 	header.add_child(tools_button)
+	status = UI.label("Office ready", 16, UI.MUTED)
+	status.max_lines_visible = 2
+	top_column.add_child(status)
 
 	var bottom := PanelContainer.new()
 	hud.add_child(bottom)
 	bottom.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	bottom.offset_left = 12
 	bottom.offset_right = -12
-	bottom.offset_top = -78
+	bottom.offset_top = -166
 	bottom.offset_bottom = -10
+	var bottom_column := VBoxContainer.new()
+	bottom.add_child(bottom_column)
 	var nav := HBoxContainer.new()
-	bottom.add_child(nav)
+	bottom_column.add_child(nav)
 	var group := ButtonGroup.new()
 	for i in range(ROBOT_IDS.size()):
 		var id: String = ROBOT_IDS[i]
@@ -176,30 +180,36 @@ func _build_ui() -> void:
 		button.add_theme_color_override("font_color", ROBOT_COLORS[i])
 		nav.add_child(button)
 		cubot_buttons.append(button)
+	var actions := HBoxContainer.new()
+	bottom_column.add_child(actions)
 	chat_button = UI.button("Chat", _show_ai, true)
-	chat_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	nav.add_child(chat_button)
 	profile_button = UI.button("Profile", _show_robot_profile)
-	nav.add_child(profile_button)
 	skill_button = UI.button("Skills", _show_skills)
-	nav.add_child(skill_button)
+	for button in [chat_button, profile_button, skill_button]:
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		actions.add_child(button)
 
 	tools_panel = PanelContainer.new()
 	hud.add_child(tools_panel)
-	tools_panel.anchor_left = 1
+	tools_panel.anchor_top = 0.35
 	tools_panel.anchor_right = 1
 	tools_panel.anchor_bottom = 1
-	tools_panel.offset_left = -340
+	tools_panel.offset_left = 12
 	tools_panel.offset_right = -12
-	tools_panel.offset_top = 84
-	tools_panel.offset_bottom = -86
+	tools_panel.offset_top = 0
+	tools_panel.offset_bottom = -176
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	tools_panel.add_child(scroll)
 	var column := VBoxContainer.new()
 	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(column)
-	column.add_child(UI.label("Local tools", 22))
+	var tools_header := HBoxContainer.new()
+	column.add_child(tools_header)
+	var tools_title := UI.label("Local tools", 22)
+	tools_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tools_header.add_child(tools_title)
+	tools_header.add_child(UI.button("Close", _toggle_tools))
 	column.add_child(UI.label("Create files without AI.", 16, UI.MUTED))
 	input = LineEdit.new()
 	input.custom_minimum_size.y = 48
@@ -259,7 +269,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	else:
 		return
 	var nearest := -1
-	var distance := 65.0
+	var distance := 42.0
 	for i in range(robots.size()):
 		var projected := office_camera.unproject_position(robots[i].global_position + Vector3(0, 0.8, 0))
 		var d := point.distance_to(projected)
@@ -339,7 +349,7 @@ func _on_task_changed(task: Dictionary) -> void:
 func _build_skill_dialog() -> void:
 	skill_dialog = Window.new()
 	skill_dialog.title = "Cubot skills"
-	skill_dialog.size = Vector2i(520, 430)
+	skill_dialog.size = Vector2i(450, 820)
 	skill_dialog.exclusive = true
 	skill_dialog.transient = true
 	skill_dialog.visible = false
@@ -358,11 +368,11 @@ func _build_skill_dialog() -> void:
 	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(column)
 	column.add_child(UI.button("Close", skill_dialog.hide))
-	var explanation := Label.new()
-	explanation.text = "Paste SKILL.md. Instructions are stored, never executed."
+	var explanation := UI.label("Paste SKILL.md. Instructions are stored, never executed.", 17)
 	column.add_child(explanation)
 	skill_source = TextEdit.new()
-	skill_source.custom_minimum_size.y = 180
+	skill_source.custom_minimum_size.y = 200
+	skill_source.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
 	skill_source.text = "---\nname: write-note\ndescription: Creates a local text note.\n---\n# Workflow\nSave the requested text."
 	column.add_child(skill_source)
 	var import_button := Button.new()
@@ -439,7 +449,7 @@ func _run_skill() -> void:
 func _build_robot_dialog() -> void:
 	robot_dialog = Window.new()
 	robot_dialog.title = "Cubot profile"
-	robot_dialog.size = Vector2i(570, 500)
+	robot_dialog.size = Vector2i(450, 820)
 	robot_dialog.exclusive = true
 	robot_dialog.transient = true
 	robot_dialog.visible = false
@@ -467,7 +477,8 @@ func _build_robot_dialog() -> void:
 	column.add_child(personality_editor)
 	memory_editor = TextEdit.new()
 	memory_editor.placeholder_text = "Private robot notes / memory"
-	memory_editor.custom_minimum_size.y = 70
+	memory_editor.custom_minimum_size.y = 130
+	memory_editor.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
 	column.add_child(memory_editor)
 	var permissions := HBoxContainer.new()
 	column.add_child(permissions)
@@ -495,7 +506,7 @@ func _build_robot_dialog() -> void:
 	column.add_child(manager_tool)
 	var delegate_button := Button.new()
 	delegate_button.custom_minimum_size.y = 48
-	delegate_button.text = "ATLAS: assign task to eligible worker"
+	delegate_button.text = "ATLAS: delegate task"
 	delegate_button.pressed.connect(_delegate_task)
 	column.add_child(delegate_button)
 	robot_dialog_status = Label.new()
