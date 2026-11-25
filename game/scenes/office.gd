@@ -33,7 +33,8 @@ var selected := 0
 var status: Label
 var input: LineEdit
 var preview: TextureRect
-var cubot_buttons: Array[Button] = []
+var selection_rings: Array[MeshInstance3D] = []
+var cubot_labels: Array[Label3D] = []
 var chat_button: Button
 var settings_button: Button
 var tools_panel: PanelContainer
@@ -106,6 +107,32 @@ func _build_robot(position_: Vector3, color: Color) -> void:
 	add_child(robot)
 	robot.position = position_
 	robots.append(robot)
+	var index := robots.size() - 1
+	var ring := MeshInstance3D.new()
+	var ring_mesh := TorusMesh.new()
+	ring_mesh.inner_radius = 0.63
+	ring_mesh.outer_radius = 0.71
+	ring_mesh.rings = 32
+	ring_mesh.ring_segments = 8
+	ring.mesh = ring_mesh
+	ring.position.y = 0.055
+	var ring_material := StandardMaterial3D.new()
+	ring_material.albedo_color = color.lightened(0.2)
+	ring_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	ring.material_override = ring_material
+	ring.visible = false
+	robot.add_child(ring)
+	selection_rings.append(ring)
+	var nameplate := Label3D.new()
+	nameplate.text = ROBOT_IDS[index].to_upper()
+	nameplate.position.y = 1.65
+	nameplate.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	nameplate.font_size = 38
+	nameplate.pixel_size = 0.009
+	nameplate.outline_size = 8
+	nameplate.modulate = color.lightened(0.25)
+	robot.add_child(nameplate)
+	cubot_labels.append(nameplate)
 	var roller := MeshInstance3D.new()
 	var sphere := SphereMesh.new()
 	sphere.radius = 0.23
@@ -155,7 +182,7 @@ func _build_ui() -> void:
 	header.add_child(settings_button)
 	var tools_button := UI.button("Tools", _toggle_tools)
 	header.add_child(tools_button)
-	status = UI.label("Office ready", 16, UI.MUTED)
+	status = UI.label("Tap a Cubot to select.", 16, UI.MUTED)
 	status.max_lines_visible = 2
 	top_column.add_child(status)
 
@@ -164,24 +191,10 @@ func _build_ui() -> void:
 	bottom.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	bottom.offset_left = 12
 	bottom.offset_right = -12
-	bottom.offset_top = -166
+	bottom.offset_top = -92
 	bottom.offset_bottom = -10
-	var bottom_column := VBoxContainer.new()
-	bottom.add_child(bottom_column)
-	var nav := HBoxContainer.new()
-	bottom_column.add_child(nav)
-	var group := ButtonGroup.new()
-	for i in range(ROBOT_IDS.size()):
-		var id: String = ROBOT_IDS[i]
-		var button := UI.button(id.to_upper(), _select_cubot.bind(i))
-		button.toggle_mode = true
-		button.button_group = group
-		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		button.add_theme_color_override("font_color", ROBOT_COLORS[i])
-		nav.add_child(button)
-		cubot_buttons.append(button)
 	var actions := HBoxContainer.new()
-	bottom_column.add_child(actions)
+	bottom.add_child(actions)
 	chat_button = UI.button("Chat", _show_ai, true)
 	profile_button = UI.button("Profile", _show_robot_profile)
 	skill_button = UI.button("Skills", _show_skills)
@@ -197,7 +210,7 @@ func _build_ui() -> void:
 	tools_panel.offset_left = 12
 	tools_panel.offset_right = -12
 	tools_panel.offset_top = 0
-	tools_panel.offset_bottom = -176
+	tools_panel.offset_bottom = -102
 	var scroll := ScrollContainer.new()
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	tools_panel.add_child(scroll)
@@ -245,8 +258,9 @@ func _select_cubot(index: int) -> void:
 	if busy or index < 0 or index >= ROBOT_IDS.size():
 		return
 	selected = index
-	for i in range(cubot_buttons.size()):
-		cubot_buttons[i].set_pressed_no_signal(i == index)
+	for i in range(selection_rings.size()):
+		selection_rings[i].visible = i == index
+		cubot_labels[i].modulate = Color.WHITE if i == index else ROBOT_COLORS[i].lightened(0.25)
 	var profile: Dictionary = roster.get_profile(ROBOT_IDS[index])
 	selected_label.text = ROBOT_IDS[index].to_upper() + " · " + str(profile.get("role", ""))
 	_refresh_binding()
@@ -289,8 +303,6 @@ func _queue(tool: String, payload: String) -> void:
 		return
 	busy = true
 	progress_timer = 0.0
-	for button in cubot_buttons:
-		button.disabled = true
 	chat_button.disabled = true
 	settings_button.disabled = true
 	tools_panel.show()
@@ -307,8 +319,6 @@ func _cancel() -> void:
 
 func _reset() -> void:
 	busy = false
-	for button in cubot_buttons:
-		button.disabled = false
 	chat_button.disabled = false
 	settings_button.disabled = false
 	skill_button.disabled = false
