@@ -3,45 +3,44 @@ extends RefCounted
 const IDS := ["atlas", "pixel", "mesh"]
 const MAX_TURNS := 12
 const MAX_FILE_BYTES := 524288
+const Snapshot = preload("res://core/snapshot_store.gd")
+var _storage: RefCounted
 var _root: String
 
 func _init(root: String = "user://cubyte/chats") -> void:
 	_root = root
+	_storage = Snapshot.new(root, "unused.json")
 
 func load_all() -> Dictionary:
 	var result := {}
 	for id in IDS:
 		var path: String = _root + "/" + str(id) + ".json"
-		var file := FileAccess.open(path, FileAccess.READ)
-		if file == null:
+		var stored: Dictionary = _storage.read("chat:" + id, path, MAX_FILE_BYTES)
+		if not stored.get("ok", false) or not stored.get("found", false):
 			continue
-		if file.get_length() > MAX_FILE_BYTES:
-			file.close()
-			continue
-		var raw: Variant = JSON.parse_string(file.get_as_text())
-		file.close()
+		var raw: Variant = JSON.parse_string(str(stored.get("value", "")))
 		if raw is Dictionary and raw.get("version") == 1 and raw.get("turns") is Array:
-			result[id] = _validated(raw["turns"])
+			var turns := _validated(raw["turns"])
+			if not turns.is_empty():
+				result[id] = turns
+			if _storage.native and stored.get("legacy", false):
+				save(id, turns)
 	return result
 
 func save(id: String, turns: Array) -> bool:
-	if id not in IDS or DirAccess.make_dir_recursive_absolute(_root) != OK:
+	if id not in IDS:
 		return false
 	var path: String = _root + "/" + str(id) + ".json"
 	var encoded := JSON.stringify({"version": 1, "turns": _validated(turns)})
 	if encoded.to_utf8_buffer().size() > MAX_FILE_BYTES:
 		return false
-	var file := FileAccess.open(path + ".tmp", FileAccess.WRITE)
-	if file == null:
-		return false
-	file.store_string(encoded)
-	file.flush()
-	var ok := file.get_error() == OK
-	file.close()
-	return ok and DirAccess.rename_absolute(path + ".tmp", path) == OK
+	return _storage.write("chat:" + id, encoded, path)
 
 func clear(id: String) -> bool:
-	if id not in IDS:
+	if id not in IDS or not _storage.ready:
+		return false
+	# An empty database snapshot prevents old backups from restoring cleared history.
+	if _storage.native and not save(id, []):
 		return false
 	var path: String = _root + "/" + str(id) + ".json"
 	for suffix in [".tmp", ""]:
