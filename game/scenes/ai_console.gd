@@ -50,6 +50,8 @@ var prompt_box: TextEdit
 var model_editor: LineEdit
 var key_editor: LineEdit
 var share_context: CheckBox
+var include_recent: CheckBox
+var session_turns := {}
 var ask_button: Button
 var cancel_button: Button
 var approve_button: Button
@@ -219,15 +221,21 @@ func _ready() -> void:
 	fallback_mode.custom_minimum_size.y = 60
 	fields.add_child(fallback_mode)
 	fallback_mode.hide()
+	include_recent = CheckBox.new()
+	include_recent.text = "Continue recent conversation"
+	include_recent.button_pressed = true
+	include_recent.custom_minimum_size.y = 60
+	fields.add_child(include_recent)
+	fields.add_child(UI.label("Cloud chat includes up to 3 recent exchanges from this session with the same Cubot and provider. Turn this off for independent messages. Saved history and private notes are optional below.", 16, UI.MUTED))
 	share_context = CheckBox.new()
 	share_context.custom_minimum_size.y = 60
-	share_context.text = "Share extra context"
+	share_context.text = "Share saved history, notes and skills"
 	fields.add_child(share_context)
 	fields.add_child(UI.label("Allows sending this Cubot’s memory, skills and recent chat to the selected AI provider.", 16, UI.MUTED))
 	fields.add_child(UI.label("API keys remain in memory for this app session only. Use a restricted personal key; do not enter a shared production key. Cloud providers may charge or retain submitted content. Model tests can consume quota. Extra context is optional.", 16, UI.MUTED))
 	connection = UI.label("Not tested", 18)
 	fields.add_child(connection)
-	fields.add_child(UI.label("Chat history is saved locally on this device (last 12 exchanges per Cubot). Enable Share extra context only if you want to send recent chat and memory to the AI provider. Avoid entering sensitive information.", 16, UI.MUTED))
+	fields.add_child(UI.label("Chat history is saved locally on this device (last 12 exchanges per Cubot). Enable sharing saved history only if you want to send previous sessions and private notes to the AI provider. Avoid entering sensitive information.", 16, UI.MUTED))
 	clear_history_button = UI.button("Clear this Cubot’s history", _confirm_clear_history)
 	fields.add_child(clear_history_button)
 	clear_history_confirm = ConfirmationDialog.new()
@@ -356,12 +364,27 @@ func _clear_key() -> void:
 		return
 	key_editor.clear()
 	session_profiles.erase(active_provider)
+	for id in ["atlas", "pixel", "mesh"]:
+		session_turns.erase(active_provider + ":" + id)
 	_credentials_changed("")
 	settings_status.text = "Key cleared."
+
+func _session_id() -> String:
+	return active_provider + ":" + robot_id
+
+func _recent_history() -> Array:
+	if share_context.button_pressed or active_provider == "offline":
+		return Online.conversation_turns(histories.get(robot_id, []))
+	if include_recent.button_pressed:
+		return Online.conversation_turns(session_turns.get(_session_id(), []))
+	return []
 
 func _ask() -> void:
 	if online_busy or local_ai.busy or robot_id.is_empty() or _provider_wait() > 0:
 
+		return
+	if not pending.is_empty():
+		status.text = "Review the proposed action using Approve & run or Reject first."
 		return
 	question = prompt_box.text.strip_edges()
 	if question.is_empty() or question.to_utf8_buffer().size() > 2048:
@@ -380,7 +403,7 @@ func _ask() -> void:
 			var skill: Dictionary = skills.get_skill(binding["skill"])
 			skill_doc = str(skill.get("markdown", "")).left(1000)
 		var recent: Array = histories.get(robot_id, [])
-		context = {"personality": profile.get("personality"), "memory": str(profile.get("memory", "")).left(1000), "skill": skill_doc, "history": recent.slice(maxi(0, recent.size() - 3))}
+		context = {"personality": profile.get("personality"), "memory": str(profile.get("memory", "")).left(1000), "skill": skill_doc}
 		if offline_mode.button_pressed:
 			context = {"personality": str(profile.get("personality", "")).left(128), "memory": str(profile.get("memory", "")).left(250)}
 			if not recent.is_empty():
@@ -415,7 +438,7 @@ func _send_online(kind: String, system: String, prompt: String) -> void:
 		return
 	if _provider_wait() > 0:
 		return
-	var req: Dictionary = Online.make_request(active_provider, model_editor.text, key_editor.text, system, prompt)
+	var req: Dictionary = Online.make_request(active_provider, model_editor.text, key_editor.text, system, prompt, _recent_history() if kind == "ask" else [])
 	if req.is_empty():
 		status.text = "Enter a valid provider model ID and API key in AI settings."
 		settings_status.text = status.text
@@ -517,18 +540,30 @@ func _online_completed(result: int, code: int, headers: PackedStringArray, body:
 	_update_buttons()
 
 func _accept_response(response: String) -> bool:
-	var turns: Array = histories.get(robot_id, [])
-	turns.append({"user": question.left(2048), "assistant": response.left(4096)})
-	while turns.size() > 12:
-		turns.pop_front()
-	histories[robot_id] = turns
 	pending = Policy.proposal(response)
 	proposed_worker = ""
+	var visible_reply := response
 	if not pending.is_empty():
 		if roster.can_use(robot_id, pending["tool"]):
 			proposed_worker = roster.delegate(pending["tool"]) if robot_id == "atlas" else robot_id
 		if proposed_worker.is_empty():
 			pending = {}
+			visible_reply = "This action is not permitted."
+		else:
+			visible_reply = "A local file action is proposed. Review it below before approving."
+			if pending["tool"] == "png":
+				visible_reply = "I can create a fixed sample PNG, not a custom AI-generated image. Review the sample action below."
+	var entry := {"user": question.left(2048), "assistant": visible_reply.left(4096)}
+	var turns: Array = histories.get(robot_id, [])
+	turns.append(entry)
+	while turns.size() > 12:
+		turns.pop_front()
+	histories[robot_id] = turns
+	var session: Array = session_turns.get(_session_id(), [])
+	session.append(entry.duplicate())
+	while session.size() > 3:
+		session.pop_front()
+	session_turns[_session_id()] = session
 	return history_store.save(robot_id, turns)
 
 func _confirm_clear_history() -> void:
@@ -542,6 +577,8 @@ func _clear_history() -> void:
 		return
 	if history_store.clear(robot_id):
 		histories.erase(robot_id)
+		for provider in ["offline"] + Online.PROVIDERS:
+			session_turns.erase(provider + ":" + robot_id)
 		pending = {}
 		prompt_box.clear()
 		settings_status.text = "Local conversation cleared."
@@ -601,6 +638,7 @@ func _update_buttons() -> void:
 	model_editor.editable = not online_busy
 	key_editor.editable = not online_busy
 	share_context.disabled = online_busy
+	include_recent.disabled = online_busy
 	fallback_mode.disabled = online_busy or local_ai.busy
 	clear_key_button.disabled = online_busy
 	clear_history_button.disabled = online_busy or robot_id.is_empty()
@@ -616,7 +654,7 @@ func _update_quota_display() -> void:
 		return
 	var local := active_provider == "offline"
 	var wait := _provider_wait()
-	ask_button.disabled = online_busy or local_ai.busy or wait > 0
+	ask_button.disabled = online_busy or local_ai.busy or wait > 0 or not pending.is_empty()
 	test_button.disabled = online_busy or local_ai.busy or wait > 0
 	fetch_models_button.disabled = online_busy or local_ai.busy or wait > 0
 	model_picker.disabled = online_busy or local_ai.busy
