@@ -1,4 +1,5 @@
 extends RefCounted
+const Writer = preload("res://core/artifact_writer.gd")
 const Tools = preload("res://core/tool_registry.gd")
 static func valid_model_path(path: String) -> bool:
 	if not path.to_lower().ends_with(".gguf"):
@@ -29,6 +30,6 @@ static func proposal(response: String) -> Dictionary:
 		return {}
 	if parsed["tool"] not in Tools.IDS or parsed["payload"].to_utf8_buffer().size() > 4096:
 		return {}
-	if parsed["tool"] == "png" and parsed["payload"] != "":
+	if not Writer.valid(parsed["tool"], parsed["payload"]):
 		return {}
 	return parsed
