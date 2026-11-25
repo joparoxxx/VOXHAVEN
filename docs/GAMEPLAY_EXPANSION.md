@@ -17,3 +17,6 @@ New regression tests cover progression, hiring, locked worker rejection, persist
 
 ## Remaining
 Freeform grid placement, unrestricted construction, dynamic collision avoidance for task movement, more hireable Cubots, advanced task planning, full production-quality character assets and actual device performance profiling are not complete. The visual greeting is a local animation state, not an AI-to-AI conversation.
+
+## Debug build authorization
+Owner authorized the next debug build. Run existing Godot CI, gameplay regression tests, and Android APK export on the development branch. Keep stable/debug-85 and main unchanged.
