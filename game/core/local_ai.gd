@@ -32,8 +32,12 @@ func _ready() -> void:
 func available() -> bool:
 	return is_instance_valid(bridge)
 
+func _size(path: String) -> int:
+	var file := FileAccess.open(path, FileAccess.READ)
+	return file.get_length() if file != null else -1
+
 func installed() -> bool:
-	return Policy.valid_model_path(PATH) and FileAccess.get_size(PATH) == SIZE
+	return Policy.valid_model_path(PATH) and _size(PATH) == SIZE
 
 func progress() -> float:
 	return clampf(float(http.get_downloaded_bytes()) / float(SIZE), 0.0, 1.0) if downloading else 0.0
@@ -84,7 +88,7 @@ func _download_done(result: int, code: int, _headers: PackedStringArray, _body: 
 		changed.emit("Cannot start model verification.")
 
 func _verify_install() -> Dictionary:
-	if FileAccess.get_size(TEMP) != SIZE or FileAccess.get_sha256(TEMP) != SHA:
+	if _size(TEMP) != SIZE or FileAccess.get_sha256(TEMP) != SHA:
 		DirAccess.remove_absolute(TEMP)
 		return {"ok": false, "error": "Model checksum mismatch."}
 	if DirAccess.rename_absolute(TEMP, PATH) != OK:
