@@ -52,7 +52,7 @@ async function reserve(env,kind,uid,ip) {
   const hashedIP=await digest(ip);
   const hashedUID=uid ? await digest(uid) : "";
   const stub=env.QUOTA.get(env.QUOTA.idFromName("global-v1"));
-  const response=await stub.fetch("https://quota.internal/reserve",{method:"POST",body:JSON.stringify({plan:quotaPlan(kind,hashedUID,hashedIP,env),day:new Date().toISOString().slice(0,10)})});
+  const response=await stub.fetch("https://quota.internal/reserve",{method:"POST",body:JSON.stringify({plan:quotaPlan(kind,hashedUID,hashedIP,env)})});
   return response.status===200;
 }
 export class Quota extends DurableObject {
@@ -61,7 +61,8 @@ export class Quota extends DurableObject {
     this.storage.sql.exec("CREATE TABLE IF NOT EXISTS usage(day TEXT, k TEXT, n INTEGER NOT NULL, PRIMARY KEY(day,k))");
   }
   async fetch(req) {
-    const {plan,day}=await req.json();
+    const {plan}=await req.json();
+    const day=new Date().toISOString().slice(0,10);
     // No network await inside transaction. All users share one global cap.
     const ok=this.storage.transactionSync(()=>{
       this.storage.sql.exec("DELETE FROM usage WHERE day <> ?",day);
