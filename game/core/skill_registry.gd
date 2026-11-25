@@ -6,7 +6,7 @@ const MAX_BYTES := 65536
 const ToolRegistry = preload("res://core/tool_registry.gd")
 const TOOLS = ToolRegistry.IDS
 const Snapshot = preload("res://core/snapshot_store.gd")
-var _storage: RefCounted
+var _storage
 var _root: String
 var _skills: Dictionary = {}
 var _bindings: Dictionary = {}
@@ -69,7 +69,7 @@ func _parse(markdown: String) -> Dictionary:
 	var description: String = metadata.get("description", "")
 	if description.is_empty() or description.length() > 1024:
 		return {}
-	return {"name": metadata["name"], "description": description, "markdown": markdown}
+	return {"name": metadata["name"], "description": description, "markdown": markdown, "allowed_tools": str(metadata.get("allowed-tools", "")), "compatibility": str(metadata.get("compatibility", ""))}
 
 func import_markdown(markdown: String) -> String:
 	if not _ready or _skills.size() >= 128:
@@ -104,6 +104,8 @@ func inventory(robot_id: String) -> Array:
 
 func equip(robot_id: String, name_: String, tool: String) -> bool:
 	if not _ready or robot_id.is_empty() or robot_id.length() > 64 or not _skills.has(name_) or tool not in TOOLS or (_bindings.size() >= 128 and not _bindings.has(robot_id)):
+		return false
+	if not dependency_report(name_, tool).get("ok", false):
 		return false
 	var previous := get_binding(robot_id)
 	var previous_inventory := inventory(robot_id)
@@ -172,3 +174,43 @@ func _load() -> bool:
 	_bindings = bindings
 	_inventory = owned
 	return true
+
+# Metadata constraints are declarative; unsupported external dependencies fail closed.
+func dependency_report(name_: String, tool: String) -> Dictionary:
+	var skill := get_skill(name_)
+	if skill.is_empty() or tool not in TOOLS:
+		return {"ok": false, "reason": "Unknown skill or tool."}
+	var compatibility := str(skill.get("compatibility", "")).strip_edges().to_lower()
+	if not compatibility.is_empty() and compatibility not in ["native", "android", "cubyte"]:
+		return {"ok": false, "reason": "External compatibility requirement is unsupported."}
+	var allowed := str(skill.get("allowed_tools", "")).strip_edges()
+	if not allowed.is_empty():
+		var ids := allowed.replace(",", " ").split(" ", false)
+		for required in ids:
+			if required not in TOOLS:
+				return {"ok": false, "reason": "Unsupported tool: " + required}
+		if tool not in ids:
+			return {"ok": false, "reason": "Selected tool is not declared."}
+	return {"ok": true, "reason": "Native requirements supported."}
+
+func export_markdown(name_: String) -> String:
+	return str(get_skill(name_).get("markdown", ""))
+
+func export_file(name_: String) -> String:
+	if not _valid_name(name_):
+		return ""
+	var markdown := export_markdown(name_)
+	if markdown.is_empty():
+		return ""
+	var directory := _root + "/exports/" + name_
+	if DirAccess.make_dir_recursive_absolute(directory) != OK:
+		return ""
+	var path := directory + "/SKILL.md"
+	var f := FileAccess.open(path, FileAccess.WRITE)
+	if f == null:
+		return ""
+	f.store_string(markdown)
+	f.flush()
+	var ok := f.get_error() == OK
+	f.close()
+	return path if ok else ""
