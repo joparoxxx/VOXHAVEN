@@ -72,6 +72,11 @@ const Snapshot = preload("res://core/snapshot_store.gd")
 var layout_store = Snapshot.new("user://cubyte/office", "layout.json")
 var build_dialog: Window
 var layout_status: Label
+var workflow_payloads: TextEdit
+var workflow_queue: Array[String] = []
+var touch_points := {}
+var touch_moved := false
+var last_touch := 0
 var desk_picker: OptionButton
 var robot_picker: OptionButton
 var station_picker: OptionButton
@@ -353,9 +358,53 @@ func _unhandled_input(event: InputEvent) -> void:
 	if busy or not is_instance_valid(office_camera):
 		return
 	var point := Vector2.ZERO
-	if event is InputEventScreenTouch and event.pressed:
+	if event is InputEventScreenTouch:
+		last_touch = Time.get_ticks_msec()
+		if event.pressed:
+			if touch_points.is_empty():
+				touch_moved = false
+			touch_points[event.index] = event.position
+			if touch_points.size() > 1:
+				touch_moved = true
+			return
 		point = event.position
-	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		touch_points.erase(event.index)
+		if touch_moved or not touch_points.is_empty():
+			return
+	elif event is InputEventScreenDrag:
+		last_touch = Time.get_ticks_msec()
+		if not touch_points.has(event.index):
+			return
+		if touch_points.size() == 2:
+			var keys := touch_points.keys()
+			var first: Vector2 = touch_points[keys[0]]
+			var second: Vector2 = touch_points[keys[1]]
+			var previous_distance := first.distance_to(second)
+			touch_points[event.index] = event.position
+			first = touch_points[keys[0]]
+			second = touch_points[keys[1]]
+			var next_distance := first.distance_to(second)
+			if previous_distance > 5.0 and next_distance > 5.0:
+				office_camera.size = clampf(office_camera.size * previous_distance / next_distance, 6.0, 18.0)
+			touch_moved = true
+		else:
+			touch_points[event.index] = event.position
+			if event.relative.length() > 2.0 or touch_moved:
+				touch_moved = true
+				_pan_camera(event.relative)
+		get_viewport().set_input_as_handled()
+		return
+	elif event is InputEventMouseButton and event.pressed:
+		if Time.get_ticks_msec() - last_touch < 350:
+			return
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			office_camera.size = maxf(6.0, office_camera.size - 1.0)
+			return
+		if event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			office_camera.size = minf(18.0, office_camera.size + 1.0)
+			return
+		if event.button_index != MOUSE_BUTTON_LEFT:
+			return
 		point = event.position
 	else:
 		return
@@ -384,6 +433,7 @@ func _start_queued() -> void:
 	route = navigator.route(robots[selected].position, target)
 	if route.is_empty():
 		status.text = "No clear route to workstation. Task remains queued."
+		workflow_queue.clear()
 		return
 	busy = true
 	face_states[selected] = "working"
@@ -400,6 +450,7 @@ func _start_queued() -> void:
 
 func _cancel() -> void:
 	if busy and engine.cancel(pending_id):
+		workflow_queue.clear()
 		_reset()
 
 func _reset() -> void:
@@ -432,7 +483,13 @@ func _process(delta: float) -> void:
 		cancel_button.disabled = true
 		var current := pending_id
 		engine.run_task(current)
+		var succeeded: bool = engine.get_task(current).get("status") == "succeeded"
 		_reset()
+		if succeeded and not workflow_queue.is_empty():
+			pending_id = workflow_queue.pop_front()
+			_start_queued()
+		else:
+			workflow_queue.clear()
 
 func _update_faces() -> void:
 	for i in range(eyes.size()):
@@ -530,6 +587,12 @@ func _build_skill_dialog() -> void:
 	equip_button.text = "Equip selected skill and tool"
 	equip_button.pressed.connect(_equip_skill)
 	column.add_child(equip_button)
+	column.add_child(UI.label("Optional workflow: declare steps in SKILL.md, then enter a JSON array of string payloads.", 16, UI.MUTED))
+	workflow_payloads = TextEdit.new()
+	workflow_payloads.custom_minimum_size.y = 90
+	workflow_payloads.placeholder_text = "[\"first payload\", \"second payload\"]"
+	column.add_child(workflow_payloads)
+	column.add_child(UI.button("Approve & run workflow", _run_workflow))
 	skill_status = Label.new()
 	skill_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	column.add_child(skill_status)
@@ -868,7 +931,7 @@ func _build_layout_dialog() -> void:
 	column.add_child(UI.button("Apply robot color", _apply_robot_color))
 	column.add_child(UI.button("Zoom in", func(): office_camera.size = maxf(6.0, office_camera.size - 1.5)))
 	column.add_child(UI.button("Zoom out", func(): office_camera.size = minf(18.0, office_camera.size + 1.5)))
-	column.add_child(UI.button("Reset camera", func(): office_camera.size = 13.8))
+	column.add_child(UI.button("Reset camera", func(): _reset_camera()))
 	layout_status = UI.label("", 16, UI.MUTED)
 	column.add_child(layout_status)
 
@@ -933,3 +996,65 @@ func _apply_robot_color() -> void:
 		layout_status.text = "Color could not be saved."
 	else:
 		layout_status.text = "Robot color saved."
+
+func _run_workflow() -> void:
+	if busy or selected < 0 or skill_picker.selected < 0:
+		return
+	var payloads: Variant = JSON.parse_string(workflow_payloads.text)
+	if not payloads is Array:
+		skill_status.text = "Enter a JSON array of string payloads."
+		return
+	var name_: String = skill_picker.get_item_text(skill_picker.selected)
+	var plan: Array = skills.workflow_plan(name_, payloads)
+	if plan.is_empty():
+		skill_status.text = "Invalid workflow, dependencies or payload count."
+		return
+	workflow_queue = engine.enqueue_workflow(ROBOT_IDS[selected], plan)
+	if workflow_queue.is_empty():
+		skill_status.text = "Workflow rejected: check permissions, inputs and storage."
+		return
+	skill_dialog.hide()
+	pending_id = workflow_queue.pop_front()
+	_start_queued()
+
+func _notification(what: int) -> void:
+	if what != NOTIFICATION_WM_GO_BACK_REQUEST or not is_instance_valid(ai_console):
+		return
+	if ai_console.visible:
+		ai_console.handle_back()
+	elif is_instance_valid(team_chat) and team_chat.visible:
+		team_chat.call("_close")
+	elif is_instance_valid(workspace) and workspace.visible:
+		var confirm: Window = workspace.get("delete_confirm")
+		if is_instance_valid(confirm) and confirm.visible:
+			confirm.hide()
+		else:
+			workspace.hide()
+	elif is_instance_valid(build_dialog) and build_dialog.visible:
+		build_dialog.hide()
+	elif skill_dialog.visible:
+		skill_dialog.hide()
+	elif robot_dialog.visible:
+		robot_dialog.hide()
+	elif tools_panel.visible:
+		tools_panel.hide()
+	elif not busy:
+		_select_cubot(-1)
+
+func _pan_camera(relative: Vector2) -> void:
+	var scale_ := office_camera.size / maxf(1.0, get_viewport().get_visible_rect().size.x)
+	var right := office_camera.global_basis.x
+	right.y = 0
+	var forward := office_camera.global_basis.z
+	forward.y = 0
+	var target := camera_target - right.normalized() * relative.x * scale_ - forward.normalized() * relative.y * scale_
+	target.x = clampf(target.x, -4.0, 4.0)
+	target.z = clampf(target.z, -3.0, 3.0)
+	office_camera.position += target - camera_target
+	camera_target = target
+
+func _reset_camera() -> void:
+	office_camera.size = 13.8
+	office_camera.position = Vector3(8, 9, 12)
+	camera_target = Vector3(0, 1, 0)
+	office_camera.look_at(camera_target)
