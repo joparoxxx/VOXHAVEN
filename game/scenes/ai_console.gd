@@ -514,9 +514,19 @@ func _read_guest_quota(code: int, headers: PackedStringArray, body: PackedByteAr
 	guest_wait_until = maxi(guest_wait_until, Time.get_ticks_msec() + wait * 1000)
 
 func _guest_error(code: int, body: PackedByteArray) -> String:
-	if code != 429:
-		return "Guest AI unavailable. Try again later."
 	var data: Variant = JSON.parse_string(body.get_string_from_utf8())
+	if code != 429:
+		if data is Dictionary:
+			match str(data.get("error", "")):
+				"AI_REGION_UNAVAILABLE", "AI_UPSTREAM_UNAVAILABLE", "GEMINI_UNAVAILABLE":
+					return "Guest AI is temporarily unavailable. Local office tools still work."
+				"AI_RATE_OR_QUOTA":
+					return "The AI provider is at its limit. Try again later."
+				"AI_RESPONSE_BLOCKED":
+					return "The AI could not answer this message. Try rephrasing it."
+				"AI_NOT_CONFIGURED":
+					return "Guest AI is currently offline. Local office tools still work."
+		return "Guest AI unavailable. Try again later."
 	if data is Dictionary:
 		match str(data.get("error", "")):
 			"CHAT_COOLDOWN":
