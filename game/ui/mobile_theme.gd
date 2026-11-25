@@ -39,7 +39,7 @@ static func make_theme() -> Theme:
 static func button(label: String, action: Callable, primary: bool = false) -> Button:
 	var node := Button.new()
 	node.text = label
-	node.custom_minimum_size.y = 48
+	node.custom_minimum_size.y = 60
 	if primary:
 		node.add_theme_stylebox_override("normal", surface(Color("#315b91"), 12, ACCENT))
 	node.pressed.connect(action)
