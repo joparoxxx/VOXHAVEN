@@ -11,7 +11,7 @@ func _init(root: String = "user://cubyte/chats") -> void:
 func load_all() -> Dictionary:
 	var result := {}
 	for id in IDS:
-		var path := _root + "/" + id + ".json"
+		var path: String = _root + "/" + str(id) + ".json"
 		var file := FileAccess.open(path, FileAccess.READ)
 		if file == null:
 			continue
@@ -27,7 +27,7 @@ func load_all() -> Dictionary:
 func save(id: String, turns: Array) -> bool:
 	if id not in IDS or DirAccess.make_dir_recursive_absolute(_root) != OK:
 		return false
-	var path := _root + "/" + id + ".json"
+	var path: String = _root + "/" + str(id) + ".json"
 	var encoded := JSON.stringify({"version": 1, "turns": _validated(turns)})
 	if encoded.to_utf8_buffer().size() > MAX_FILE_BYTES:
 		return false
@@ -43,7 +43,7 @@ func save(id: String, turns: Array) -> bool:
 func clear(id: String) -> bool:
 	if id not in IDS:
 		return false
-	var path := _root + "/" + id + ".json"
+	var path: String = _root + "/" + str(id) + ".json"
 	for suffix in [".tmp", ""]:
 		if FileAccess.file_exists(path + suffix) and DirAccess.remove_absolute(path + suffix) != OK:
 			return false
