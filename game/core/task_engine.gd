@@ -65,7 +65,7 @@ func enqueue(robot_id: String, tool: String, payload: String, requested_by: Stri
 		return ""
 	if not Writer.valid(tool, payload) or not _allowed(robot_id, tool):
 		return ""
-	if not requested_by.is_empty() and (requested_by != "atlas" or robot_id not in ["pixel", "mesh"] or not _allowed(requested_by, tool)):
+	if not requested_by.is_empty() and (requested_by != "atlas" or robot_id not in ["pixel", "mesh", "nova"] or not _allowed(requested_by, tool)):
 		return ""
 	var id := str(_next_id)
 	_next_id += 1
@@ -209,7 +209,7 @@ func load_state() -> bool:
 		if item.get("id") != id or not item.get("tool") in TOOLS or not item.get("status") in states or not item.get("payload") is String or not item.get("robot_id") is String:
 			return false
 		var requester: Variant = item.get("requested_by", "")
-		if not requester is String or (requester != "" and (requester != "atlas" or item["robot_id"] not in ["pixel", "mesh"])):
+		if not requester is String or (requester != "" and (requester != "atlas" or item["robot_id"] not in ["pixel", "mesh", "nova"])):
 			return false
 		item["requested_by"] = requester
 		if item["payload"].to_utf8_buffer().size() > MAX_TEXT_BYTES:
@@ -334,7 +334,7 @@ func enqueue_team_workflow(steps: Array) -> Array[String]:
 	if not _ready or steps.is_empty() or steps.size() > 8 or _next_id + steps.size() >= 1000000:
 		return ids
 	for step in steps:
-		if not step is Dictionary or not step.get("tool") is String or not step.get("payload") is String or step.get("robot_id") not in ["atlas", "pixel", "mesh"]:
+		if not step is Dictionary or not step.get("tool") is String or not step.get("payload") is String or step.get("robot_id") not in ["atlas", "pixel", "mesh", "nova"]:
 			return ids
 		if not _allowed(step["robot_id"], step["tool"]) or not Writer.valid(step["tool"], step["payload"]):
 			return ids
