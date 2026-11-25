@@ -3,6 +3,7 @@ const TaskEngine = preload("res://core/task_engine.gd")
 const Skills = preload("res://core/skill_registry.gd")
 const Roster = preload("res://core/robot_roster.gd")
 const AIConsole = preload("res://scenes/ai_console.gd")
+const UI = preload("res://ui/mobile_theme.gd")
 var ai_console
 var roster = Roster.new()
 var robot_dialog: Window
@@ -32,7 +33,12 @@ var selected := 0
 var status: Label
 var input: LineEdit
 var preview: TextureRect
-var selection: OptionButton
+var cubot_buttons: Array[Button] = []
+var chat_button: Button
+var settings_button: Button
+var tools_panel: PanelContainer
+var selected_label: Label
+var office_camera: Camera3D
 var run_text: Button
 var run_png: Button
 var cancel_button: Button
@@ -83,6 +89,7 @@ func _build_office() -> void:
 	add_child(camera)
 	camera.look_at(Vector3(0, 1, 0))
 	camera.current = true
+	office_camera = camera
 	_box(self, Vector3(10, 0.15, 8), Vector3(0, -0.075, 0), Color("#727b85"))
 	_box(self, Vector3(10, 2, 0.15), Vector3(0, 1, -4), Color("#aab3bd"))
 	_box(self, Vector3(0.15, 2, 8), Vector3(-5, 1, 0), Color("#909ba6"))
@@ -121,70 +128,100 @@ func _build_robot(position_: Vector3, color: Color) -> void:
 func _build_ui() -> void:
 	var layer := CanvasLayer.new()
 	add_child(layer)
-	var panel := PanelContainer.new()
-	panel.position = Vector2(12, 12)
-	panel.custom_minimum_size = Vector2(280, 0)
-	layer.add_child(panel)
+	var hud := Control.new()
+	hud.theme = UI.make_theme()
+	hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	layer.add_child(hud)
+	hud.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var top := PanelContainer.new()
+	hud.add_child(top)
+	top.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	top.offset_left = 12
+	top.offset_right = -12
+	top.offset_top = 10
+	top.offset_bottom = 76
+	var header := HBoxContainer.new()
+	top.add_child(header)
+	var branding := VBoxContainer.new()
+	branding.custom_minimum_size.x = 180
+	header.add_child(branding)
+	branding.add_child(UI.label("CUBYTE", 25))
+	selected_label = UI.label("ATLAS · Manager", 16, UI.MUTED)
+	branding.add_child(selected_label)
+	status = UI.label("Office ready", 16, UI.MUTED)
+	status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	status.max_lines_visible = 2
+	header.add_child(status)
+	settings_button = UI.button("AI settings", _show_ai_settings)
+	header.add_child(settings_button)
+	var tools_button := UI.button("Tools", _toggle_tools)
+	header.add_child(tools_button)
+
+	var bottom := PanelContainer.new()
+	hud.add_child(bottom)
+	bottom.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	bottom.offset_left = 12
+	bottom.offset_right = -12
+	bottom.offset_top = -78
+	bottom.offset_bottom = -10
+	var nav := HBoxContainer.new()
+	bottom.add_child(nav)
+	var group := ButtonGroup.new()
+	for i in range(ROBOT_IDS.size()):
+		var id: String = ROBOT_IDS[i]
+		var button := UI.button(id.to_upper(), _select_cubot.bind(i))
+		button.toggle_mode = true
+		button.button_group = group
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.add_theme_color_override("font_color", ROBOT_COLORS[i])
+		nav.add_child(button)
+		cubot_buttons.append(button)
+	chat_button = UI.button("Chat", _show_ai, true)
+	chat_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nav.add_child(chat_button)
+	profile_button = UI.button("Profile", _show_robot_profile)
+	nav.add_child(profile_button)
+	skill_button = UI.button("Skills", _show_skills)
+	nav.add_child(skill_button)
+
+	tools_panel = PanelContainer.new()
+	hud.add_child(tools_panel)
+	tools_panel.anchor_left = 1
+	tools_panel.anchor_right = 1
+	tools_panel.anchor_bottom = 1
+	tools_panel.offset_left = -340
+	tools_panel.offset_right = -12
+	tools_panel.offset_top = 84
+	tools_panel.offset_bottom = -86
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	tools_panel.add_child(scroll)
 	var column := VBoxContainer.new()
-	panel.add_child(column)
-	var title := Label.new()
-	title.text = "CUBYTE | Hybrid AI v0.4"
-	column.add_child(title)
-	selection = OptionButton.new()
-	for id in ROBOT_IDS:
-		selection.add_item(id.to_upper())
-	selection.item_selected.connect(func(index: int):
-		selected = index
-		_refresh_binding()
-	)
-	column.add_child(selection)
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(column)
+	column.add_child(UI.label("Local tools", 22))
+	column.add_child(UI.label("Create files without AI.", 16, UI.MUTED))
 	input = LineEdit.new()
+	input.custom_minimum_size.y = 48
 	input.placeholder_text = "Text to save"
-	input.text = "Hello from CUBYTE"
 	input.max_length = 2048
 	column.add_child(input)
-	run_text = Button.new()
-	run_text.text = "Create real TXT"
-	run_text.pressed.connect(func(): _queue("text", input.text))
+	run_text = UI.button("Create TXT", func(): _queue("text", input.text))
 	column.add_child(run_text)
-	run_png = Button.new()
-	run_png.text = "Create real PNG"
-	run_png.pressed.connect(func(): _queue("png", ""))
+	run_png = UI.button("Create sample PNG", func(): _queue("png", ""))
 	column.add_child(run_png)
-	cancel_button = Button.new()
-	cancel_button.text = "Cancel queued task"
+	cancel_button = UI.button("Cancel task", _cancel)
 	cancel_button.disabled = true
-	cancel_button.pressed.connect(_cancel)
 	column.add_child(cancel_button)
-	status = Label.new()
-	status.custom_minimum_size.x = 260
-	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	status.text = "Offline | No AI model required"
-	column.add_child(status)
+	skill_summary = UI.label("", 16, UI.MUTED)
+	column.add_child(skill_summary)
+	column.add_child(UI.button("Run equipped skill", _run_skill))
 	preview = TextureRect.new()
 	preview.custom_minimum_size = Vector2(96, 96)
 	preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	column.add_child(preview)
-	skill_summary = Label.new()
-	skill_summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	column.add_child(skill_summary)
-	skill_button = Button.new()
-	skill_button.text = "Skills / equip"
-	skill_button.pressed.connect(_show_skills)
-	column.add_child(skill_button)
-	var use_skill := Button.new()
-	use_skill.text = "Run equipped skill"
-	use_skill.pressed.connect(_run_skill)
-	column.add_child(use_skill)
-	profile_button = Button.new()
-	profile_button.text = "Robot profile / Manager"
-	profile_button.pressed.connect(_show_robot_profile)
-	column.add_child(profile_button)
-	var ai_button := Button.new()
-	ai_button.text = "Talk to robot / AI settings"
-	ai_button.pressed.connect(_show_ai)
-	column.add_child(ai_button)
+	tools_panel.hide()
 	ai_console = AIConsole.new()
 	ai_console.configure(roster, skills)
 	ai_console.visible = false
@@ -192,7 +229,46 @@ func _build_ui() -> void:
 	ai_console.proposal_approved.connect(_ai_task)
 	_build_skill_dialog()
 	_build_robot_dialog()
+	_select_cubot(0)
+
+func _select_cubot(index: int) -> void:
+	if busy or index < 0 or index >= ROBOT_IDS.size():
+		return
+	selected = index
+	for i in range(cubot_buttons.size()):
+		cubot_buttons[i].set_pressed_no_signal(i == index)
+	var profile: Dictionary = roster.get_profile(ROBOT_IDS[index])
+	selected_label.text = ROBOT_IDS[index].to_upper() + " · " + str(profile.get("role", ""))
 	_refresh_binding()
+
+func _toggle_tools() -> void:
+	tools_panel.visible = not tools_panel.visible
+
+func _show_ai_settings() -> void:
+	if not busy:
+		ai_console.show_settings_for(ROBOT_IDS[selected])
+
+func _unhandled_input(event: InputEvent) -> void:
+	if busy or not is_instance_valid(office_camera):
+		return
+	var point := Vector2.ZERO
+	if event is InputEventScreenTouch and event.pressed:
+		point = event.position
+	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		point = event.position
+	else:
+		return
+	var nearest := -1
+	var distance := 65.0
+	for i in range(robots.size()):
+		var projected := office_camera.unproject_position(robots[i].global_position + Vector3(0, 0.8, 0))
+		var d := point.distance_to(projected)
+		if d < distance:
+			nearest = i
+			distance = d
+	if nearest >= 0:
+		_select_cubot(nearest)
+		get_viewport().set_input_as_handled()
 
 func _queue(tool: String, payload: String) -> void:
 	if busy:
@@ -203,7 +279,11 @@ func _queue(tool: String, payload: String) -> void:
 		return
 	busy = true
 	progress_timer = 0.0
-	selection.disabled = true
+	for button in cubot_buttons:
+		button.disabled = true
+	chat_button.disabled = true
+	settings_button.disabled = true
+	tools_panel.show()
 	skill_button.disabled = true
 	profile_button.disabled = true
 	run_text.disabled = true
@@ -217,7 +297,10 @@ func _cancel() -> void:
 
 func _reset() -> void:
 	busy = false
-	selection.disabled = false
+	for button in cubot_buttons:
+		button.disabled = false
+	chat_button.disabled = false
+	settings_button.disabled = false
 	skill_button.disabled = false
 	profile_button.disabled = false
 	run_text.disabled = not engine.is_ready() or not roster.can_use(ROBOT_IDS[selected], "text")
@@ -255,7 +338,7 @@ func _on_task_changed(task: Dictionary) -> void:
 
 func _build_skill_dialog() -> void:
 	skill_dialog = Window.new()
-	skill_dialog.title = "Local Skill Library"
+	skill_dialog.title = "Cubot skills"
 	skill_dialog.size = Vector2i(520, 430)
 	skill_dialog.exclusive = true
 	skill_dialog.transient = true
@@ -263,20 +346,27 @@ func _build_skill_dialog() -> void:
 	add_child(skill_dialog)
 	skill_dialog.close_requested.connect(func(): skill_dialog.hide())
 	var margin := MarginContainer.new()
+	margin.theme = UI.make_theme()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	for side in ["left", "top", "right", "bottom"]:
 		margin.add_theme_constant_override("margin_" + side, 12)
 	skill_dialog.add_child(margin)
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	margin.add_child(scroll)
 	var column := VBoxContainer.new()
-	margin.add_child(column)
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(column)
+	column.add_child(UI.button("Close", skill_dialog.hide))
 	var explanation := Label.new()
 	explanation.text = "Paste SKILL.md. Instructions are stored, never executed."
 	column.add_child(explanation)
 	skill_source = TextEdit.new()
-	skill_source.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	skill_source.custom_minimum_size.y = 180
 	skill_source.text = "---\nname: write-note\ndescription: Creates a local text note.\n---\n# Workflow\nSave the requested text."
 	column.add_child(skill_source)
 	var import_button := Button.new()
+	import_button.custom_minimum_size.y = 48
 	import_button.text = "Import pasted SKILL.md"
 	import_button.pressed.connect(_import_skill)
 	column.add_child(import_button)
@@ -287,6 +377,7 @@ func _build_skill_dialog() -> void:
 	tool_picker.add_item("PNG (native sample image)")
 	column.add_child(tool_picker)
 	var equip_button := Button.new()
+	equip_button.custom_minimum_size.y = 48
 	equip_button.text = "Equip selected skill and tool"
 	equip_button.pressed.connect(_equip_skill)
 	column.add_child(equip_button)
@@ -299,7 +390,7 @@ func _show_skills() -> void:
 		return
 	_refresh_skill_picker()
 	skill_status.text = "Assign to " + ROBOT_IDS[selected].to_upper()
-	skill_dialog.popup_centered()
+	skill_dialog.popup_centered_ratio(0.94)
 
 func _refresh_skill_picker() -> void:
 	skill_picker.clear()
@@ -347,7 +438,7 @@ func _run_skill() -> void:
 
 func _build_robot_dialog() -> void:
 	robot_dialog = Window.new()
-	robot_dialog.title = "Robot management"
+	robot_dialog.title = "Cubot profile"
 	robot_dialog.size = Vector2i(570, 500)
 	robot_dialog.exclusive = true
 	robot_dialog.transient = true
@@ -355,12 +446,18 @@ func _build_robot_dialog() -> void:
 	add_child(robot_dialog)
 	robot_dialog.close_requested.connect(func(): robot_dialog.hide())
 	var margin := MarginContainer.new()
+	margin.theme = UI.make_theme()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	for side in ["left", "top", "right", "bottom"]:
 		margin.add_theme_constant_override("margin_" + side, 10)
 	robot_dialog.add_child(margin)
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	margin.add_child(scroll)
 	var column := VBoxContainer.new()
-	margin.add_child(column)
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(column)
+	column.add_child(UI.button("Close", robot_dialog.hide))
 	profile_label = Label.new()
 	profile_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	column.add_child(profile_label)
@@ -381,6 +478,7 @@ func _build_robot_dialog() -> void:
 	allow_png.text = "Allow PNG"
 	permissions.add_child(allow_png)
 	var save := Button.new()
+	save.custom_minimum_size.y = 48
 	save.text = "Save profile and permissions"
 	save.pressed.connect(_save_robot_profile)
 	column.add_child(save)
@@ -396,6 +494,7 @@ func _build_robot_dialog() -> void:
 	manager_tool.add_item("PNG")
 	column.add_child(manager_tool)
 	var delegate_button := Button.new()
+	delegate_button.custom_minimum_size.y = 48
 	delegate_button.text = "ATLAS: assign task to eligible worker"
 	delegate_button.pressed.connect(_delegate_task)
 	column.add_child(delegate_button)
@@ -422,8 +521,8 @@ func _show_robot_profile() -> void:
 		history_label.add_text("No recorded tasks.")
 	for task in tasks:
 		history_label.add_text("#" + str(task["id"]) + "  " + str(task["tool"]) + "  " + str(task["status"]) + "\n")
-	robot_dialog_status.text = "Rule-based routing; no AI model yet."
-	robot_dialog.popup_centered()
+	robot_dialog_status.text = "Local profile and rule-based task routing."
+	robot_dialog.popup_centered_ratio(0.94)
 
 func _save_robot_profile() -> void:
 	var id: String = ROBOT_IDS[selected]
@@ -449,9 +548,7 @@ func _delegate_task() -> void:
 	if worker_index < 0:
 		return
 	robot_dialog.hide()
-	selected = worker_index
-	selection.select(selected)
-	_refresh_binding()
+	_select_cubot(worker_index)
 	_queue(tool, input.text if tool == "text" else "")
 
 func _show_ai() -> void:
@@ -465,7 +562,5 @@ func _ai_task(robot_id: String, tool: String, payload: String) -> void:
 	var index := ROBOT_IDS.find(robot_id)
 	if index < 0:
 		return
-	selected = index
-	selection.select(index)
-	_refresh_binding()
+	_select_cubot(index)
 	_queue(tool, payload)
