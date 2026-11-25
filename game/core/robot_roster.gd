@@ -9,6 +9,8 @@ const DEFAULTS := {
 	"pixel": {"role": "Designer", "personality": "Creative", "specialization": "PNG"},
 	"mesh": {"role": "3D Artist", "personality": "Methodical", "specialization": "Geometry (future)"}
 }
+const Snapshot = preload("res://core/snapshot_store.gd")
+var _storage: RefCounted
 var _root: String
 var _profiles := {}
 var _ready := false
@@ -21,9 +23,16 @@ func _init(root: String = "user://cubyte/robots") -> void:
 		profile["memory"] = ""
 		profile["permissions"] = {"text": true, "png": true}
 		_profiles[id] = profile
-	_ready = DirAccess.make_dir_recursive_absolute(root) == OK
-	if _ready and FileAccess.file_exists(root + "/profiles.json"):
-		_ready = _load()
+	_storage = Snapshot.new(root, "profiles.json")
+	_ready = _storage.ready
+	if _ready:
+		var saved: Dictionary = _storage.read("profiles", "", 65536)
+		_ready = saved.get("ok", false)
+		if _ready and saved.get("found", false):
+			_ready = _load()
+			if _ready and _storage.native and saved.get("legacy", false):
+				_ready = _save()
+
 
 func is_ready() -> bool:
 	return _ready
@@ -71,22 +80,13 @@ func _set_profile_field(id: String, key: String, value: Variant) -> bool:
 	return true
 
 func _save() -> bool:
-	var temp := _root + "/profiles.json.tmp"
-	var file := FileAccess.open(temp, FileAccess.WRITE)
-	if file == null:
-		return false
-	file.store_string(JSON.stringify({"version": 1, "profiles": _profiles}))
-	file.flush()
-	var ok := file.get_error() == OK
-	file.close()
-	return ok and DirAccess.rename_absolute(temp, _root + "/profiles.json") == OK
+	return _storage.write("profiles", JSON.stringify({"version": 1, "profiles": _profiles}))
 
 func _load() -> bool:
-	var file := FileAccess.open(_root + "/profiles.json", FileAccess.READ)
-	if file == null or file.get_length() > 65536:
+	var saved_data: Dictionary = _storage.read("profiles", "", 65536)
+	if not saved_data.get("ok", false) or not saved_data.get("found", false):
 		return false
-	var raw: Variant = JSON.parse_string(file.get_as_text())
-	file.close()
+	var raw: Variant = JSON.parse_string(str(saved_data.get("value", "")))
 	if not raw is Dictionary or raw.get("version") != 1 or not raw.get("profiles") is Dictionary:
 		return false
 	var saved: Dictionary = raw["profiles"]
