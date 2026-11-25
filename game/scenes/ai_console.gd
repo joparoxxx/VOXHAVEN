@@ -187,7 +187,18 @@ func show_for(id: String) -> void:
 	popup_centered_ratio(0.96)
 
 func show_settings_for(id: String) -> void:
-	show_for(id)
+	if online_busy:
+		return
+	if not id.is_empty():
+		show_for(id)
+	else:
+		robot_id = ""
+		pending = {}
+		prompt_box.clear()
+		heading.text = "AI settings"
+		subtitle.text = "OpenAI · Shared by all Cubots"
+		title = "CUBYTE | AI settings"
+		popup_centered_ratio(0.96)
 	_show_settings()
 
 func _show_settings() -> void:
@@ -196,9 +207,13 @@ func _show_settings() -> void:
 	chat_page.hide()
 	settings_page.show()
 	settings_button.hide()
+	back_button.text = "Done" if robot_id.is_empty() else "Back to chat"
 	_update_buttons()
 
 func _show_chat() -> void:
+	if robot_id.is_empty():
+		hide()
+		return
 	settings_page.hide()
 	chat_page.show()
 	settings_button.show()
