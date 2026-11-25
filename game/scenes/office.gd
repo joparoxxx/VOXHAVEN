@@ -1,5 +1,14 @@
 extends Node3D
 const TaskEngine = preload("res://core/task_engine.gd")
+const Skills = preload("res://core/skill_registry.gd")
+var skills = Skills.new()
+var skill_dialog: Window
+var skill_source: TextEdit
+var skill_picker: OptionButton
+var tool_picker: OptionButton
+var skill_status: Label
+var skill_summary: Label
+var skill_button: Button
 const ROBOT_IDS := ["atlas", "pixel", "mesh"]
 const ROBOT_COLORS := [Color("#d7b56d"), Color("#a48bdf"), Color("#62a9d9")]
 var engine = TaskEngine.new()
@@ -109,7 +118,10 @@ func _build_ui() -> void:
 	selection = OptionButton.new()
 	for id in ROBOT_IDS:
 		selection.add_item(id.to_upper())
-	selection.item_selected.connect(func(index: int): selected = index)
+	selection.item_selected.connect(func(index: int):
+		selected = index
+		_refresh_binding()
+	)
 	column.add_child(selection)
 	input = LineEdit.new()
 	input.placeholder_text = "Text to save"
@@ -139,6 +151,19 @@ func _build_ui() -> void:
 	preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	column.add_child(preview)
+	skill_summary = Label.new()
+	skill_summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	column.add_child(skill_summary)
+	skill_button = Button.new()
+	skill_button.text = "Skills / equip"
+	skill_button.pressed.connect(_show_skills)
+	column.add_child(skill_button)
+	var use_skill := Button.new()
+	use_skill.text = "Run equipped skill"
+	use_skill.pressed.connect(_run_skill)
+	column.add_child(use_skill)
+	_build_skill_dialog()
+	_refresh_binding()
 
 func _queue(tool: String, payload: String) -> void:
 	if busy:
@@ -150,6 +175,7 @@ func _queue(tool: String, payload: String) -> void:
 	busy = true
 	progress_timer = 0.0
 	selection.disabled = true
+	skill_button.disabled = true
 	run_text.disabled = true
 	run_png.disabled = true
 	cancel_button.disabled = false
@@ -162,6 +188,7 @@ func _cancel() -> void:
 func _reset() -> void:
 	busy = false
 	selection.disabled = false
+	skill_button.disabled = false
 	run_text.disabled = not engine.is_ready()
 	run_png.disabled = not engine.is_ready()
 	cancel_button.disabled = true
@@ -194,3 +221,92 @@ func _on_task_changed(task: Dictionary) -> void:
 				preview.texture = ImageTexture.create_from_image(image)
 	elif not str(task.get("error", "")).is_empty():
 		status.text += "\n" + str(task["error"])
+
+func _build_skill_dialog() -> void:
+	skill_dialog = Window.new()
+	skill_dialog.title = "Local Skill Library"
+	skill_dialog.size = Vector2i(520, 430)
+	skill_dialog.exclusive = true
+	skill_dialog.transient = true
+	skill_dialog.visible = false
+	add_child(skill_dialog)
+	skill_dialog.close_requested.connect(func(): skill_dialog.hide())
+	var margin := MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "top", "right", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 12)
+	skill_dialog.add_child(margin)
+	var column := VBoxContainer.new()
+	margin.add_child(column)
+	var explanation := Label.new()
+	explanation.text = "Paste SKILL.md. Instructions are stored, never executed."
+	column.add_child(explanation)
+	skill_source = TextEdit.new()
+	skill_source.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	skill_source.text = "---\nname: write-note\ndescription: Creates a local text note.\n---\n# Workflow\nSave the requested text."
+	column.add_child(skill_source)
+	var import_button := Button.new()
+	import_button.text = "Import pasted SKILL.md"
+	import_button.pressed.connect(_import_skill)
+	column.add_child(import_button)
+	skill_picker = OptionButton.new()
+	column.add_child(skill_picker)
+	tool_picker = OptionButton.new()
+	tool_picker.add_item("TXT (native text)")
+	tool_picker.add_item("PNG (native sample image)")
+	column.add_child(tool_picker)
+	var equip_button := Button.new()
+	equip_button.text = "Equip selected skill and tool"
+	equip_button.pressed.connect(_equip_skill)
+	column.add_child(equip_button)
+	skill_status = Label.new()
+	skill_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	column.add_child(skill_status)
+
+func _show_skills() -> void:
+	if busy:
+		return
+	_refresh_skill_picker()
+	skill_status.text = "Assign to " + ROBOT_IDS[selected].to_upper()
+	skill_dialog.popup_centered()
+
+func _refresh_skill_picker() -> void:
+	skill_picker.clear()
+	for name_ in skills.list_names():
+		skill_picker.add_item(name_)
+	if skill_picker.item_count > 0:
+		skill_picker.select(0)
+
+func _import_skill() -> void:
+	var name_: String = skills.import_markdown(skill_source.text)
+	if name_.is_empty():
+		skill_status.text = "Rejected: invalid, duplicate, unsupported metadata or storage error."
+		return
+	_refresh_skill_picker()
+	skill_picker.select(skills.list_names().find(name_))
+	skill_status.text = "Imported: " + name_
+
+func _equip_skill() -> void:
+	if busy or skill_picker.selected < 0:
+		return
+	var name_ := skill_picker.get_item_text(skill_picker.selected)
+	var tool := "text" if tool_picker.selected == 0 else "png"
+	if skills.equip(ROBOT_IDS[selected], name_, tool):
+		skill_status.text = "Equipped " + name_ + " with " + tool
+		_refresh_binding()
+	else:
+		skill_status.text = "Assignment rejected."
+
+func _refresh_binding() -> void:
+	var binding: Dictionary = skills.get_binding(ROBOT_IDS[selected])
+	skill_summary.text = "Skill: none" if binding.is_empty() else "Skill: " + str(binding["skill"]) + " / " + str(binding["tool"])
+
+func _run_skill() -> void:
+	if busy:
+		return
+	var binding: Dictionary = skills.get_binding(ROBOT_IDS[selected])
+	if binding.is_empty():
+		status.text = "Equip a skill first."
+		return
+	var tool: String = binding["tool"]
+	_queue(tool, input.text if tool == "text" else "")
