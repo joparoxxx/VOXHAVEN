@@ -83,6 +83,7 @@ func _download_done(result: int, code: int, _headers: PackedStringArray, _body: 
 	changed.emit("Verifying downloaded model…")
 	thread = Thread.new()
 	if thread.start(_verify_install) != OK:
+		thread = null
 		verifying = false
 		busy = false
 		changed.emit("Cannot start model verification.")
@@ -102,6 +103,7 @@ func generate(system: String, prompt: String) -> bool:
 	bridge.call("reset_cancel")
 	thread = Thread.new()
 	if thread.start(_generate.bind(system, prompt, loaded)) != OK:
+		thread = null
 		busy = false
 		return false
 	return true
