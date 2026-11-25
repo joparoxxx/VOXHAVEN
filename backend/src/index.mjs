@@ -133,10 +133,25 @@ export default {async fetch(req,env) {
         {role:"user",content:input.system+"\n\nPlayer message:\n"+input.prompt}
       ]})
     });
-    if(!response.ok)return error("AI_UNAVAILABLE",503);
+    if(!response.ok){
+      let reason="UPSTREAM_ERROR";
+      try {
+        const code=(await response.json())?.error?.code;
+        if(["invalid_api_key","insufficient_quota","rate_limit_exceeded","model_not_found","unsupported_parameter","unsupported_value","invalid_request_error","billing_hard_limit_reached","invalid_model","account_deactivated","project_not_found","permission_denied","country_not_supported_region_territory"].includes(code))reason=code.toUpperCase();
+      } catch {}
+      if(reason==="UPSTREAM_ERROR"){
+        reason=({400:"BAD_REQUEST",401:"AUTH_FAILED",403:"ACCESS_DENIED",404:"NOT_FOUND",429:"RATE_OR_QUOTA"})[response.status]||reason;
+      }
+      console.warn("openai_status",response.status,reason);
+      return error("AI_"+reason,503);
+    }
     const data=await response.json();
     const reply=data?.choices?.[0]?.message?.content;
-    if(typeof reply!=="string"||!reply.trim()||reply.length>16384||reply.includes(env.OPENAI_API_KEY))return error("AI_UNAVAILABLE",503);
+    if(typeof reply!=="string"||!reply.trim()){
+      console.warn("openai_empty_completion");
+      return error("AI_EMPTY_RESPONSE",503);
+    }
+    if(reply.length>16384||reply.includes(env.OPENAI_API_KEY))return error("AI_RESPONSE_REJECTED",503);
     return json({choices:[{message:{content:reply}}]});
   } catch(e) {
     // Do not log error messages, request payloads, credentials, or tokens.
