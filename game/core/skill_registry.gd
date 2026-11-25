@@ -54,7 +54,7 @@ func _parse(markdown: String) -> Dictionary:
 		if colon < 1 or line.begins_with(" ") or line.begins_with("\t"):
 			return {}
 		var key := line.substr(0, colon).strip_edges()
-		if key not in ["name", "description", "license", "compatibility", "allowed-tools"] or metadata.has(key):
+		if key not in ["name", "description", "license", "compatibility", "allowed-tools", "steps"] or metadata.has(key):
 			return {}
 		var value := line.substr(colon + 1).strip_edges()
 		if value.begins_with("'") and value.ends_with("'") and value.length() >= 2:
@@ -69,7 +69,7 @@ func _parse(markdown: String) -> Dictionary:
 	var description: String = metadata.get("description", "")
 	if description.is_empty() or description.length() > 1024:
 		return {}
-	return {"name": metadata["name"], "description": description, "markdown": markdown, "allowed_tools": str(metadata.get("allowed-tools", "")), "compatibility": str(metadata.get("compatibility", ""))}
+	return {"name": metadata["name"], "description": description, "markdown": markdown, "allowed_tools": str(metadata.get("allowed-tools", "")), "compatibility": str(metadata.get("compatibility", "")), "steps": str(metadata.get("steps", ""))}
 
 func import_markdown(markdown: String) -> String:
 	if not _ready or _skills.size() >= 128:
@@ -214,3 +214,17 @@ func export_file(name_: String) -> String:
 	var ok := f.get_error() == OK
 	f.close()
 	return path if ok else ""
+
+# Optional native-only sequence: steps: md, json, pdf
+# Payloads are entered by the player as a JSON array of strings, not executable skill code.
+func workflow_plan(name_: String, payloads: Array) -> Array:
+	var skill := get_skill(name_)
+	var steps := str(skill.get("steps", "")).replace(",", " ").split(" ", false)
+	if steps.is_empty() or steps.size() > 8 or payloads.size() != steps.size():
+		return []
+	var result: Array = []
+	for i in range(steps.size()):
+		if not payloads[i] is String or not dependency_report(name_, steps[i]).get("ok", false):
+			return []
+		result.append({"tool": steps[i], "payload": payloads[i]})
+	return result
