@@ -16,6 +16,8 @@ const Company = preload("res://core/company.gd")
 const CompanyHQ = preload("res://scenes/company_hq.gd")
 var company = Company.new()
 var company_hq: Window
+const WorkflowBuilder = preload("res://scenes/workflow_builder.gd")
+var workflow_builder: Window
 var company_label: Label
 var decorations: Node3D
 const UI = preload("res://ui/mobile_theme.gd")
@@ -255,6 +257,7 @@ func _build_ui() -> void:
 	company_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	company_row.add_child(company_label)
 	company_row.add_child(UI.button("Company", _show_company))
+	company_row.add_child(UI.button("Workflow", _show_workflow_builder))
 	_refresh_company_label()
 
 	var bottom := PanelContainer.new()
@@ -344,6 +347,10 @@ func _build_ui() -> void:
 	company_hq.hide()
 	add_child(company_hq)
 	company_hq.connect("changed", _company_changed)
+	workflow_builder = WorkflowBuilder.new()
+	workflow_builder.hide()
+	add_child(workflow_builder)
+	workflow_builder.connect("approved", _start_team_workflow)
 	_build_skill_dialog()
 	_build_robot_dialog()
 	_build_layout_dialog()
@@ -512,8 +519,8 @@ func _process(delta: float) -> void:
 			_refresh_company_label()
 		_reset()
 		if succeeded and not workflow_queue.is_empty():
-			pending_id = workflow_queue.pop_front()
-			_start_queued()
+			var next_id: String = workflow_queue.pop_front()
+			_run_queued(next_id)
 		else:
 			workflow_queue.clear()
 
@@ -1067,6 +1074,8 @@ func _notification(what: int) -> void:
 			confirm.hide()
 		else:
 			workspace.hide()
+	elif is_instance_valid(workflow_builder) and workflow_builder.visible:
+		workflow_builder.hide()
 	elif is_instance_valid(company_hq) and company_hq.visible:
 		company_hq.hide()
 	elif is_instance_valid(build_dialog) and build_dialog.visible:
@@ -1135,3 +1144,16 @@ func _refresh_decorations() -> void:
 		_box(decorations, Vector3(0.2, 0.2, 0.2), Vector3(4.3, 0.1, -3.3), Color("#586475"))
 		_box(decorations, Vector3(0.08, 1.5, 0.08), Vector3(4.3, 0.85, -3.3), Color("#738297"))
 		_box(decorations, Vector3(0.4, 0.18, 0.4), Vector3(4.3, 1.7, -3.3), Color("#f5d998"))
+
+func _show_workflow_builder() -> void:
+	if not busy and not ai_console.online_busy:
+		workflow_builder.call("show_builder", engine, roster)
+
+func _start_team_workflow(ids: Array) -> void:
+	if busy or ids.is_empty():
+		return
+	workflow_queue.clear()
+	for id in ids:
+		workflow_queue.append(str(id))
+	var first: String = workflow_queue.pop_front()
+	_run_queued(first)
