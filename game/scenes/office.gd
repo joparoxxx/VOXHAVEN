@@ -128,7 +128,7 @@ func _build_ui() -> void:
 	var column := VBoxContainer.new()
 	panel.add_child(column)
 	var title := Label.new()
-	title.text = "CUBYTE | Local AI v0.3"
+	title.text = "CUBYTE | Hybrid AI v0.4"
 	column.add_child(title)
 	selection = OptionButton.new()
 	for id in ROBOT_IDS:
@@ -182,7 +182,7 @@ func _build_ui() -> void:
 	profile_button.pressed.connect(_show_robot_profile)
 	column.add_child(profile_button)
 	var ai_button := Button.new()
-	ai_button.text = "Talk to robot / Local AI"
+	ai_button.text = "Talk to robot / AI settings"
 	ai_button.pressed.connect(_show_ai)
 	column.add_child(ai_button)
 	ai_console = AIConsole.new()
