@@ -4,5 +4,5 @@ compatibility_minimum = "4.4"
 reloadable = false
 
 [libraries]
-android.arm64 = "res://native/libcubyte_llama.so"
-linux.x86_64 = "res://native/libcubyte_llama.so"
+android.arm64 = "res://native/android/libcubyte_llama.so"
+linux.x86_64 = "res://native/linux/libcubyte_llama.so"
