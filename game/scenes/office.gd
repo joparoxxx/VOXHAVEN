@@ -65,6 +65,7 @@ var mouths: Array[MeshInstance3D] = []
 var face_clock := 0.0
 var face_states := ["idle", "idle", "idle"]
 var face_until := [0.0, 0.0, 0.0]
+var last_active := [0.0, 0.0, 0.0]
 var robot_bodies: Array[MeshInstance3D] = []
 var desks: Array[Node3D] = []
 var workstation_ids := [0, 1, 2]
@@ -76,7 +77,7 @@ var workflow_payloads: TextEdit
 var workflow_queue: Array[String] = []
 var touch_points := {}
 var touch_moved := false
-var last_touch := 0
+var last_touch := -1000
 var desk_picker: OptionButton
 var robot_picker: OptionButton
 var station_picker: OptionButton
@@ -317,6 +318,7 @@ func _build_ui() -> void:
 	team_chat = TeamChat.new()
 	team_chat.hide()
 	add_child(team_chat)
+	team_chat.connect("proposal_approved", _ai_task)
 	workspace = Workspace.new()
 	workspace.hide()
 	add_child(workspace)
@@ -497,8 +499,16 @@ func _update_faces() -> void:
 			face_states[i] = "idle"
 			face_until[i] = 0.0
 		var state: String = face_states[i]
+		if i == selected or state != "idle":
+			last_active[i] = face_clock
+		elif face_clock - last_active[i] > 60.0:
+			state = "sleeping"
+		if is_instance_valid(team_chat) and team_chat.get("busy") == true and team_chat.get("current") == ROBOT_IDS[i]:
+			state = "thinking"
+			last_active[i] = face_clock
 		if is_instance_valid(ai_console) and ai_console.online_busy and ai_console.robot_id == ROBOT_IDS[i] and ai_console.online_operation == "ask":
 			state = "thinking"
+			last_active[i] = face_clock
 		var blink := fmod(face_clock + i * 0.8, 4.1) < 0.13
 		var scale_y := 0.12 if blink else 1.0
 		var color := Color("#83f5df")
