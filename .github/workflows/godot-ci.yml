@@ -1,0 +1,118 @@
+name: Godot CI
+on:
+  push:
+    branches: [main, "docs/project-foundation"]
+  pull_request:
+  workflow_dispatch:
+concurrency:
+  group: godot-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  headless:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Godot 4.4.1
+        run: |
+          curl --fail --location --retry 3 -o /tmp/godot.zip https://github.com/godotengine/godot-builds/releases/download/4.4.1-stable/Godot_v4.4.1-stable_linux.x86_64.zip
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          chmod +x /tmp/godot/Godot_v4.4.1-stable_linux.x86_64
+          echo "/tmp/godot" >> "$GITHUB_PATH"
+      - name: Import
+        run: |
+          set -o pipefail
+          timeout 120s Godot_v4.4.1-stable_linux.x86_64 --headless --path game --editor --import 2>&1 | tee /tmp/cubyte-import.log
+          if grep -E 'SCRIPT ERROR|ERROR: Failed to load script' /tmp/cubyte-import.log; then exit 1; fi
+      - name: Task engine tests
+        run: |
+          set -o pipefail
+          timeout 60s Godot_v4.4.1-stable_linux.x86_64 --headless --path game --script res://tests/test_tasks.gd 2>&1 | tee /tmp/test_tasks.log
+          if grep -E 'SCRIPT ERROR|ERROR: Failed to load script' /tmp/test_tasks.log; then exit 1; fi
+          grep -Fx 'CUBYTE task tests: 0 failures' /tmp/test_tasks.log
+      - name: Skill registry tests
+        run: |
+          set -o pipefail
+          timeout 60s Godot_v4.4.1-stable_linux.x86_64 --headless --path game --script res://tests/test_skills.gd 2>&1 | tee /tmp/test_skills.log
+          if grep -E 'SCRIPT ERROR|ERROR: Failed to load script' /tmp/test_skills.log; then exit 1; fi
+          grep -Fx 'CUBYTE skill tests: 0 failures' /tmp/test_skills.log
+      - name: Robot profile and permission tests
+        run: |
+          set -o pipefail
+          timeout 60s Godot_v4.4.1-stable_linux.x86_64 --headless --path game --script res://tests/test_robots.gd 2>&1 | tee /tmp/test_robots.log
+          if grep -E 'SCRIPT ERROR|ERROR: Failed to load script' /tmp/test_robots.log; then exit 1; fi
+          grep -Fx 'CUBYTE robot tests: 0 failures' /tmp/test_robots.log
+      - name: Scene smoke
+        run: Godot_v4.4.1-stable_linux.x86_64 --headless --path game --quit-after 10
+  android-debug:
+    needs: headless
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Android SDK command-line tools
+        uses: android-actions/setup-android@v3
+        with:
+          cmdline-tools-version: 11076708
+          packages: platform-tools
+      - name: Install Android tools
+        run: |
+          test -n "$ANDROID_HOME"
+          command -v sdkmanager
+          sdkmanager --version
+          sdkmanager --sdk_root="$ANDROID_HOME" --install "platform-tools" "build-tools;34.0.0" "platforms;android-34"
+          test -x "$ANDROID_HOME/build-tools/34.0.0/apksigner"
+      - name: Install Godot and matching templates
+        run: |
+          base=https://github.com/godotengine/godot-builds/releases/download/4.4.1-stable
+          curl --fail --location --retry 3 -o /tmp/godot.zip "$base/Godot_v4.4.1-stable_linux.x86_64.zip"
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          chmod +x /tmp/godot/Godot_v4.4.1-stable_linux.x86_64
+          echo "/tmp/godot" >> "$GITHUB_PATH"
+          curl --fail --location --retry 3 -o /tmp/templates.tpz "$base/Godot_v4.4.1-stable_export_templates.tpz"
+          unzip -q /tmp/templates.tpz -d /tmp/cubyte-templates
+          mkdir -p "$HOME/.local/share/godot/export_templates"
+          mv /tmp/cubyte-templates/templates "$HOME/.local/share/godot/export_templates/4.4.1.stable"
+      - name: Configure Android export
+        run: |
+          mkdir -p "$HOME/.config/godot" "$HOME/.android"
+          keytool -genkeypair -keystore "$HOME/.android/debug.keystore" -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          cat > "$HOME/.config/godot/editor_settings-4.4.tres" <<EOF
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/java_sdk_path = "$JAVA_HOME"
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          export/android/debug_keystore = "$HOME/.android/debug.keystore"
+          export/android/debug_keystore_user = "androiddebugkey"
+          export/android/debug_keystore_pass = "android"
+          EOF
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$HOME/.android/debug.keystore" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android" >> "$GITHUB_ENV"
+      - name: Export signed debug APK
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          Godot_v4.4.1-stable_linux.x86_64 --headless --path game --editor --import
+          Godot_v4.4.1-stable_linux.x86_64 --headless --path game --export-debug Android "$GITHUB_WORKSPACE/dist/CUBYTE-debug.apk"
+          test -s dist/CUBYTE-debug.apk
+      - name: Verify APK
+        run: |
+          "$ANDROID_HOME/build-tools/34.0.0/apksigner" verify --verbose dist/CUBYTE-debug.apk
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging dist/CUBYTE-debug.apk | tee /tmp/apk-info.txt
+          grep -F "package: name='com.urfavxbf.cubyte'" /tmp/apk-info.txt
+          grep -F "arm64-v8a" /tmp/apk-info.txt
+          if grep -F "android.permission.INTERNET" /tmp/apk-info.txt; then echo "Unexpected internet permission"; exit 1; fi
+          (cd dist && sha256sum CUBYTE-debug.apk > SHA256SUMS.txt)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CUBYTE-Android-debug
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
