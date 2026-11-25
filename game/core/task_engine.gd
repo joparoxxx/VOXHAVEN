@@ -1,7 +1,8 @@
 extends RefCounted
 ## Deterministic, single-worker native runtime. No shell or network access.
 signal task_changed(task: Dictionary)
-const TOOLS := ["text", "png"]
+const ToolRegistry = preload("res://core/tool_registry.gd")
+const TOOLS = ToolRegistry.IDS
 const MAX_TEXT_BYTES := 65536
 var _root: String
 var _tasks: Dictionary = {}
