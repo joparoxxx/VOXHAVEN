@@ -73,8 +73,7 @@ func _ready() -> void:
 	histories = history_store.load_all()
 	title = "CUBYTE | Cubot chat"
 	size = Vector2i(450, 880)
-	transient = true
-	exclusive = true
+	UI.configure_modal(self)
 	close_requested.connect(hide)
 	var margin := MarginContainer.new()
 	margin.theme = UI.make_theme()
@@ -272,7 +271,7 @@ func show_for(id: String) -> void:
 	status.text = "Ask your Cubot a question."
 	_draw_history()
 	_show_chat()
-	popup_centered_ratio(0.96)
+	UI.show_modal(self)
 
 func show_settings_for(id: String) -> void:
 	if online_busy:
@@ -286,7 +285,7 @@ func show_settings_for(id: String) -> void:
 		heading.text = "AI settings"
 		subtitle.text = "AI access · Shared by all Cubots"
 		title = "CUBYTE | AI settings"
-		popup_centered_ratio(0.96)
+		UI.show_modal(self)
 	_show_settings()
 
 func _show_settings() -> void:
