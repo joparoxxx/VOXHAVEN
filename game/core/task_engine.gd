@@ -31,7 +31,7 @@ func history(robot_id: String, limit: int = 30) -> Array:
 		return result
 	for n in range(_next_id - 1, 0, -1):
 		var id := str(n)
-		if _tasks.has(id) and _tasks[id]["robot_id"] == robot_id:
+		if _tasks.has(id) and (_tasks[id]["robot_id"] == robot_id or _tasks[id].get("requested_by", "") == robot_id):
 			var item: Dictionary = get_task(id)
 			item.erase("payload")
 			result.append(item)
@@ -39,14 +39,16 @@ func history(robot_id: String, limit: int = 30) -> Array:
 				break
 	return result
 
-func enqueue(robot_id: String, tool: String, payload: String) -> String:
+func enqueue(robot_id: String, tool: String, payload: String, requested_by: String = "") -> String:
 	if not _ready or robot_id.is_empty() or robot_id.length() > 64 or not tool in TOOLS or payload.to_utf8_buffer().size() > MAX_TEXT_BYTES:
 		return ""
 	if not _allowed(robot_id, tool):
 		return ""
+	if not requested_by.is_empty() and (requested_by != "atlas" or robot_id not in ["pixel", "mesh"] or not _allowed(requested_by, tool)):
+		return ""
 	var id := str(_next_id)
 	_next_id += 1
-	_tasks[id] = {"id": id, "robot_id": robot_id, "tool": tool, "payload": payload, "status": "queued", "artifact": "", "error": ""}
+	_tasks[id] = {"id": id, "robot_id": robot_id, "requested_by": requested_by, "tool": tool, "payload": payload, "status": "queued", "artifact": "", "error": ""}
 	if not _save():
 		_tasks.erase(id)
 		_ready = false
@@ -75,10 +77,18 @@ func run_next() -> bool:
 			return true
 	return false
 
+func run_task(id: String) -> bool:
+	if not _ready or not _tasks.has(id) or _tasks[id]["status"] != "queued":
+		return false
+	if not _transition(id, "running"):
+		return false
+	_execute(id)
+	return true
+
 func _execute(id: String) -> void:
 	var task: Dictionary = _tasks[id]
 	var tool: String = task["tool"]
-	if not _allowed(task["robot_id"], tool):
+	if not _allowed(task["robot_id"], tool) or (not str(task.get("requested_by", "")).is_empty() and not _allowed(task["requested_by"], tool)):
 		task["error"] = "Tool permission denied."
 		task["payload"] = ""
 		_transition(id, "failed")
@@ -155,6 +165,10 @@ func load_state() -> bool:
 			return false
 		if item.get("id") != id or not item.get("tool") in TOOLS or not item.get("status") in states or not item.get("payload") is String or not item.get("robot_id") is String:
 			return false
+		var requester: Variant = item.get("requested_by", "")
+		if not requester is String or (requester != "" and (requester != "atlas" or item["robot_id"] not in ["pixel", "mesh"])):
+			return false
+		item["requested_by"] = requester
 		if item["payload"].to_utf8_buffer().size() > MAX_TEXT_BYTES:
 			return false
 		var expected := _root + "/artifacts/" + id + (".txt" if item["tool"] == "text" else ".png")
