@@ -10,11 +10,12 @@ var guest_prompt := ""
 var auth_pending := false
 const Identity = preload("res://core/cubot_identity.gd")
 const UI = preload("res://ui/mobile_theme.gd")
-signal proposal_approved(robot_id: String, tool: String, payload: String)
+signal proposal_approved(robot_id: String, tool: String, payload: String, worker_id: String)
 var roster
 var skills
 var robot_id := ""
 var pending := {}
+var proposed_worker := ""
 const ChatHistory = preload("res://core/chat_history.gd")
 var history_store = ChatHistory.new()
 var histories := {}
@@ -450,8 +451,12 @@ func _accept_response(response: String) -> bool:
 		turns.pop_front()
 	histories[robot_id] = turns
 	pending = Policy.proposal(response)
-	if not pending.is_empty() and not roster.can_use(robot_id, pending["tool"]):
-		pending = {}
+	proposed_worker = ""
+	if not pending.is_empty():
+		if roster.can_use(robot_id, pending["tool"]):
+			proposed_worker = roster.delegate(pending["tool"]) if robot_id == "atlas" else robot_id
+		if proposed_worker.is_empty():
+			pending = {}
 	return history_store.save(robot_id, turns)
 
 func _confirm_clear_history() -> void:
@@ -494,7 +499,8 @@ func _draw_history() -> void:
 	proposal_panel.visible = not pending.is_empty()
 	proposal_text.clear()
 	if not pending.is_empty():
-		proposal_text.add_text(str(pending["tool"]).to_upper() + "\n" + str(pending["payload"]))
+		var route := robot_id.to_upper() if proposed_worker == robot_id else robot_id.to_upper() + " → " + proposed_worker.to_upper()
+		proposal_text.add_text(route + "\n" + str(pending["tool"]).to_upper() + "\n" + str(pending["payload"]))
 
 func _reject() -> void:
 	pending = {}
@@ -506,14 +512,16 @@ func _approve() -> void:
 	if online_busy or pending.is_empty():
 		return
 	var request := pending.duplicate()
+	var worker := proposed_worker
 	pending = {}
+	proposed_worker = ""
 	_draw_history()
 	_update_buttons()
-	if not roster.can_use(robot_id, request["tool"]):
+	if worker.is_empty() or not roster.can_use(robot_id, request["tool"]) or not roster.can_use(worker, request["tool"]):
 		status.text = "Permission denied."
 		return
 	hide()
-	proposal_approved.emit(robot_id, request["tool"], request["payload"])
+	proposal_approved.emit(robot_id, request["tool"], request["payload"], worker)
 
 func _update_buttons() -> void:
 	settings_button.disabled = online_busy
