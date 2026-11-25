@@ -56,10 +56,30 @@ jobs:
           timeout 60s Godot_v4.4.1-stable_linux.x86_64 --headless --path game --script res://tests/test_online_ai.gd 2>&1 | tee /tmp/test_online_ai.log
           if grep -E 'SCRIPT ERROR|ERROR: Failed to load script' /tmp/test_online_ai.log; then exit 1; fi
           grep -Fx 'CUBYTE online AI tests: 0 failures' /tmp/test_online_ai.log
-      - name: Guest gateway policy tests
-        run: node --test backend/tests/policy.test.mjs
+      - name: Chat history tests
+        run: |
+          set -o pipefail
+          timeout 60s Godot_v4.4.1-stable_linux.x86_64 --headless --path game --script res://tests/chat_history_test.gd 2>&1 | tee /tmp/chat_history.log
+          if grep -E 'SCRIPT ERROR|ERROR: Failed to load script' /tmp/chat_history.log; then exit 1; fi
+          grep -Fx 'Chat history smoke test: PASS' /tmp/chat_history.log
+      - name: Delegation tests
+        run: |
+          set -o pipefail
+          timeout 60s Godot_v4.4.1-stable_linux.x86_64 --headless --path game --script res://tests/delegation_test.gd 2>&1 | tee /tmp/delegation.log
+          if grep -E 'SCRIPT ERROR|ERROR: Failed to load script' /tmp/delegation.log; then exit 1; fi
+          grep -Fx 'Delegation smoke test: PASS' /tmp/delegation.log
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Guest gateway policy and quota tests
+        run: |
+          node --check backend/src/index.mjs
+          node --test backend/tests/*.test.mjs
       - name: Scene smoke
-        run: Godot_v4.4.1-stable_linux.x86_64 --headless --path game --quit-after 10
+        run: |
+          set -o pipefail
+          timeout 60s Godot_v4.4.1-stable_linux.x86_64 --headless --path game --quit-after 10 2>&1 | tee /tmp/scene.log
+          if grep -E 'SCRIPT ERROR|ERROR: Failed to load script' /tmp/scene.log; then exit 1; fi
   android-debug:
     needs: headless
     runs-on: ubuntu-24.04
