@@ -68,6 +68,15 @@ var face_until := [0.0, 0.0, 0.0]
 var robot_bodies: Array[MeshInstance3D] = []
 var desks: Array[Node3D] = []
 var workstation_ids := [0, 1, 2]
+const Snapshot = preload("res://core/snapshot_store.gd")
+var layout_store = Snapshot.new("user://cubyte/office", "layout.json")
+var build_dialog: Window
+var layout_status: Label
+var desk_picker: OptionButton
+var robot_picker: OptionButton
+var station_picker: OptionButton
+var color_picker: ColorPickerButton
+var camera_target := Vector3(0, 1, 0)
 
 func _ready() -> void:
 	engine.set_permission_checker(Callable(roster, "can_use"))
@@ -223,6 +232,7 @@ func _build_ui() -> void:
 	var workspace_button := UI.button("Tasks & files", _show_workspace)
 	workspace_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	workspace_row.add_child(workspace_button)
+	workspace_row.add_child(UI.button("Build", _show_build))
 
 	var bottom := PanelContainer.new()
 	cubot_actions = bottom
@@ -308,6 +318,7 @@ func _build_ui() -> void:
 	workspace.connect("run_requested", _run_queued)
 	_build_skill_dialog()
 	_build_robot_dialog()
+	_build_layout_dialog()
 	_select_cubot(-1)
 
 func _select_cubot(index: int) -> void:
@@ -790,3 +801,135 @@ func _rebuild_navigation() -> void:
 	for desk in desks:
 		navigator.block_box(desk.position, Vector2(1.35, 0.85))
 	navigator.block_box(Vector3(3.5, 0, 2.4), Vector2(1.35, 1.1))
+
+func _restore_layout() -> void:
+	var saved: Dictionary = layout_store.read("layout", "", 16384)
+	if not saved.get("ok", false) or not saved.get("found", false):
+		return
+	var raw: Variant = JSON.parse_string(str(saved.get("value", "")))
+	if not raw is Dictionary or raw.get("version") != 1:
+		return
+	var offsets: Variant = raw.get("desks")
+	var stations: Variant = raw.get("stations")
+	var colors: Variant = raw.get("colors")
+	if not offsets is Array or offsets.size() != 3 or not stations is Array or stations.size() != 3 or not colors is Array or colors.size() != 3:
+		return
+	var assigned: Array[int] = []
+	for i in range(3):
+		if not (offsets[i] is float or offsets[i] is int) or not (is_equal_approx(float(offsets[i]), -3.0) or is_equal_approx(float(offsets[i]), -2.6) or is_equal_approx(float(offsets[i]), -2.1)):
+			return
+		if not (stations[i] is float or stations[i] is int) or float(stations[i]) != int(stations[i]) or int(stations[i]) not in [0, 1, 2] or int(stations[i]) in assigned:
+			return
+		assigned.append(int(stations[i]))
+		if not colors[i] is String or not Color.html_is_valid(colors[i]):
+			return
+	for i in range(3):
+		desks[i].position.z = float(offsets[i])
+		workstation_ids[i] = assigned[i]
+		robot_bodies[i].material_override.albedo_color = Color.html(colors[i])
+
+func _save_layout() -> bool:
+	var offsets := []
+	var colors := []
+	for i in range(3):
+		offsets.append(desks[i].position.z)
+		colors.append(robot_bodies[i].material_override.albedo_color.to_html(false))
+	return layout_store.write("layout", JSON.stringify({"version": 1, "desks": offsets, "stations": workstation_ids, "colors": colors}))
+
+func _build_layout_dialog() -> void:
+	build_dialog = Window.new()
+	UI.configure_modal(build_dialog)
+	build_dialog.hide()
+	add_child(build_dialog)
+	build_dialog.close_requested.connect(build_dialog.hide)
+	var column := UI.scroll_column(build_dialog)
+	column.add_child(UI.label("Office build mode", 24))
+	column.add_child(UI.button("Close", build_dialog.hide))
+	column.add_child(UI.label("Move desks within their lanes, assign stations and customize robot body color.", 16, UI.MUTED))
+	desk_picker = OptionButton.new()
+	for i in range(3):
+		desk_picker.add_item("Desk " + str(i + 1))
+	column.add_child(desk_picker)
+	column.add_child(UI.button("Move desk toward wall", func(): _move_desk(-1)))
+	column.add_child(UI.button("Move desk toward center", func(): _move_desk(1)))
+	robot_picker = OptionButton.new()
+	station_picker = OptionButton.new()
+	for i in range(3):
+		robot_picker.add_item(ROBOT_IDS[i].to_upper())
+		station_picker.add_item("Station " + str(i + 1))
+	column.add_child(robot_picker)
+	column.add_child(station_picker)
+	column.add_child(UI.button("Assign workstation (swap)", _assign_station))
+	color_picker = ColorPickerButton.new()
+	color_picker.custom_minimum_size.y = 60
+	color_picker.edit_alpha = false
+	column.add_child(color_picker)
+	robot_picker.item_selected.connect(_layout_robot_selected)
+	column.add_child(UI.button("Apply robot color", _apply_robot_color))
+	column.add_child(UI.button("Zoom in", func(): office_camera.size = maxf(6.0, office_camera.size - 1.5)))
+	column.add_child(UI.button("Zoom out", func(): office_camera.size = minf(18.0, office_camera.size + 1.5)))
+	column.add_child(UI.button("Reset camera", func(): office_camera.size = 13.8))
+	layout_status = UI.label("", 16, UI.MUTED)
+	column.add_child(layout_status)
+
+func _show_build() -> void:
+	if busy or ai_console.online_busy:
+		return
+	_layout_robot_selected(robot_picker.selected)
+	UI.show_modal(build_dialog)
+
+func _layout_robot_selected(index: int) -> void:
+	if index < 0:
+		return
+	station_picker.select(workstation_ids[index])
+	color_picker.color = robot_bodies[index].material_override.albedo_color
+
+func _move_desk(direction: int) -> void:
+	var index := desk_picker.selected
+	if index < 0 or busy:
+		return
+	var positions := [-3.0, -2.6, -2.1]
+	var old := desks[index].position.z
+	var nearest := 0
+	for i in range(positions.size()):
+		if absf(old - positions[i]) < absf(old - positions[nearest]):
+			nearest = i
+	desks[index].position.z = positions[clampi(nearest + direction, 0, 2)]
+	for robot in robots:
+		if absf(robot.position.x - desks[index].position.x) <= 1.35 and absf(robot.position.z - desks[index].position.z) <= 0.85:
+			desks[index].position.z = old
+			layout_status.text = "A robot occupies that space."
+			return
+	if not _save_layout():
+		desks[index].position.z = old
+		layout_status.text = "Storage failure; desk movement reverted."
+		return
+	_rebuild_navigation()
+	layout_status.text = "Desk layout saved."
+
+func _assign_station() -> void:
+	var robot := robot_picker.selected
+	var station := station_picker.selected
+	if robot < 0 or station < 0 or busy:
+		return
+	var old: Array = workstation_ids.duplicate()
+	var other := workstation_ids.find(station)
+	workstation_ids[other] = workstation_ids[robot]
+	workstation_ids[robot] = station
+	if not _save_layout():
+		workstation_ids = old
+		layout_status.text = "Assignment could not be saved."
+	else:
+		layout_status.text = "Workstation assignment saved."
+
+func _apply_robot_color() -> void:
+	var index := robot_picker.selected
+	if index < 0 or busy:
+		return
+	var old: Color = robot_bodies[index].material_override.albedo_color
+	robot_bodies[index].material_override.albedo_color = color_picker.color
+	if not _save_layout():
+		robot_bodies[index].material_override.albedo_color = old
+		layout_status.text = "Color could not be saved."
+	else:
+		layout_status.text = "Robot color saved."
