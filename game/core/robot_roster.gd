@@ -1,4 +1,5 @@
 extends RefCounted
+const Bus = preload("res://core/event_bus.gd")
 ## Local profiles and explicit permissions. No model inference.
 const IDS := ["atlas", "pixel", "mesh"]
 const ToolRegistry = preload("res://core/tool_registry.gd")
@@ -66,6 +67,7 @@ func _set_profile_field(id: String, key: String, value: Variant) -> bool:
 	if not _save():
 		_profiles[id][key] = previous
 		return false
+	Bus.publish("robot.profile_changed", {"robot_id": id, "field": key})
 	return true
 
 func _save() -> bool:
