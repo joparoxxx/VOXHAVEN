@@ -13,7 +13,7 @@ var proposal_box: VBoxContainer
 var proposal_label: RichTextLabel
 var approve: Button
 var reject: Button
-const IDS := ["atlas", "pixel", "mesh"]
+const IDS := ["atlas", "pixel", "mesh", "nova"]
 var console: Object
 var transcript: RichTextLabel
 var input: TextEdit
@@ -47,13 +47,14 @@ func _ready() -> void:
 	var column := VBoxContainer.new()
 	margin.add_child(column)
 	column.add_child(UI.label("Team Chat", 24))
-	column.add_child(UI.label("Gemini · One request per selected Cubot (up to 3 per message). Group messages are shared with selected participants. Private chats are not included.", 16, UI.MUTED))
+	column.add_child(UI.label("Gemini · One request per selected Cubot (up to 4 per message). Group messages are shared with selected participants. Private chats are not included.", 16, UI.MUTED))
 	var row := HBoxContainer.new()
 	column.add_child(row)
 	for id in IDS:
 		var check := CheckBox.new()
 		check.text = id.to_upper()
 		check.button_pressed = true
+		check.visible = id != "nova"
 		check.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(check)
 		members[id] = check
@@ -77,7 +78,7 @@ func _ready() -> void:
 	approval_row.add_child(reject)
 	proposal_box.hide()
 	input = TextEdit.new()
-	input.placeholder_text = "Message everyone or @ATLAS / @PIXEL / @MESH"
+	input.placeholder_text = "Message the team or @NOVA (if hired)"
 	input.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
 	input.custom_minimum_size.y = 100
 	column.add_child(input)
@@ -106,6 +107,7 @@ func show_team(source: Object) -> void:
 	if busy:
 		return
 	console = source
+	members["nova"].visible = source.roster.is_active("nova")
 	UI.show_modal(self)
 	_refresh()
 
@@ -131,7 +133,7 @@ func _start() -> void:
 		if ("@" + id) in tokens:
 			mentions.append(id)
 	for id in IDS:
-		if id in mentions or (mentions.is_empty() and members[id].button_pressed):
+		if console.roster.is_active(id) and (id in mentions or (mentions.is_empty() and members[id].button_pressed)):
 			queue.append(id)
 	if queue.is_empty():
 		status.text = "Select at least one Cubot."
@@ -266,7 +268,7 @@ func _restore() -> void:
 		return
 	var entries: Array = raw["messages"]
 	for entry in entries.slice(maxi(0, entries.size() - 36)):
-		if entry is Dictionary and entry.get("sender") in ["you", "atlas", "pixel", "mesh", "office"] and entry.get("text") is String:
+		if entry is Dictionary and entry.get("sender") in ["you", "atlas", "pixel", "mesh", "nova", "office"] and entry.get("text") is String:
 			messages.append({"sender": entry["sender"], "text": str(entry["text"]).left(2048)})
 	_render()
 
