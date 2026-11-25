@@ -7,6 +7,9 @@ var image: TextureRect
 var status: Label
 var ids: Array[String] = []
 var selected_id := ""
+var name_editor: LineEdit
+var delete_confirm: ConfirmationDialog
+var delete_id := ""
 signal run_requested(id: String)
 
 func _ready() -> void:
@@ -32,7 +35,19 @@ func _ready() -> void:
 	column.add_child(UI.button("Run queued / retry failed", _run))
 	column.add_child(UI.button("Cancel queued task", _cancel))
 	column.add_child(UI.button("Copy text preview", _copy))
+	name_editor = LineEdit.new()
+	name_editor.placeholder_text = "Artifact name (letters, digits, - or _)"
+	name_editor.max_length = 64
+	column.add_child(name_editor)
+	column.add_child(UI.button("Rename display name", _rename))
+	column.add_child(UI.button("Export copy to local folder", _export))
+	column.add_child(UI.button("Delete artifact", _confirm_delete))
 	column.add_child(UI.button("Refresh", refresh))
+	delete_confirm = ConfirmationDialog.new()
+	UI.configure_modal(delete_confirm)
+	delete_confirm.dialog_text = "Permanently delete this generated file? Exported copies are not removed."
+	delete_confirm.confirmed.connect(_delete)
+	add_child(delete_confirm)
 	close_requested.connect(hide)
 
 func show_workspace(source: Object) -> void:
@@ -44,6 +59,7 @@ func refresh() -> void:
 	if not is_instance_valid(engine):
 		return
 	var previous := selected_id
+	name_editor.clear()
 	list.clear()
 	ids.clear()
 	selected_id = ""
@@ -53,7 +69,7 @@ func refresh() -> void:
 	for task in engine.list_tasks():
 		var id := str(task["id"])
 		ids.append(id)
-		list.add_item("#" + id + " " + str(task["robot_id"]).to_upper() + " · " + str(task["tool"]) + " · " + str(task["status"]))
+		list.add_item("#" + id + " " + str(task["robot_id"]).to_upper() + " · " + str(task.get("display_name", task["tool"])) + " · " + str(task["status"]))
 		if id == previous:
 			list.select(ids.size() - 1)
 			_selected(ids.size() - 1)
@@ -63,6 +79,7 @@ func _selected(index: int) -> void:
 		return
 	selected_id = ids[index]
 	var task: Dictionary = engine.get_task(selected_id)
+	name_editor.text = str(task.get("display_name", "task-" + selected_id))
 	detail.clear()
 	image.texture = null
 	detail.add_text("Task #" + selected_id + "\n" + str(task.get("status")) + "\n" + str(task.get("error", "")) + "\n")
@@ -106,3 +123,28 @@ func _run() -> void:
 		return
 	hide()
 	run_requested.emit(id)
+
+func _rename() -> void:
+	if not selected_id.is_empty() and engine.rename_artifact(selected_id, name_editor.text.strip_edges()):
+		refresh()
+		status.text = "Display name saved."
+	else:
+		status.text = "Invalid name or no existing artifact."
+
+func _export() -> void:
+	var path: String = engine.export_artifact(selected_id)
+	status.text = "Exported to " + path if not path.is_empty() else "Export failed, missing artifact or existing export name."
+
+func _confirm_delete() -> void:
+	if not selected_id.is_empty() and not engine.artifact_path(selected_id).is_empty():
+		delete_id = selected_id
+		UI.show_modal(delete_confirm, 0.7)
+
+func _delete() -> void:
+	var id := delete_id
+	delete_id = ""
+	if engine.delete_artifact(id):
+		refresh()
+		status.text = "Artifact deleted."
+	else:
+		status.text = "Delete failed."
