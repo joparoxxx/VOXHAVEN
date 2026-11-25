@@ -3,6 +3,15 @@ const Policy = preload("res://core/ai_policy.gd")
 const Online = preload("res://core/online_ai.gd")
 const Guest = preload("res://core/guest_ai.gd")
 var guest = Guest.new()
+const LocalAI = preload("res://core/local_ai.gd")
+var local_ai = LocalAI.new()
+var offline_mode: CheckBox
+var download_button: Button
+var remove_model_button: Button
+var offline_status: Label
+var offline_progress: ProgressBar
+var local_running := false
+var auto_select_local := false
 var personal_mode: CheckBox
 var personal_fields: VBoxContainer
 var guest_system := ""
@@ -151,6 +160,27 @@ func _ready() -> void:
 	personal_mode.text = "Use my own OpenAI key"
 	personal_mode.custom_minimum_size.y = 60
 	fields.add_child(personal_mode)
+	offline_mode = CheckBox.new()
+	offline_mode.text = "Use offline AI (on this device)"
+	offline_mode.custom_minimum_size.y = 60
+	fields.add_child(offline_mode)
+	fields.add_child(UI.label("Qwen2.5 0.5B Q4_K_M · 491 MB one-time download. No API key or daily cloud quota. Smaller model; answers may be limited.", 16, UI.MUTED))
+	download_button = UI.button("Download & set offline model", _download_local, true)
+	fields.add_child(download_button)
+	remove_model_button = UI.button("Delete downloaded model", _remove_local)
+	fields.add_child(remove_model_button)
+	offline_progress = ProgressBar.new()
+	offline_progress.max_value = 100
+	fields.add_child(offline_progress)
+	offline_progress.hide()
+	offline_status = UI.label("", 16, UI.MUTED)
+	fields.add_child(offline_status)
+	add_child(local_ai)
+	local_ai.changed.connect(_local_changed)
+	local_ai.completed.connect(_local_completed)
+	offline_mode.toggled.connect(_offline_changed)
+	offline_mode.set_pressed_no_signal(local_ai.available() and local_ai.installed())
+	offline_status.text = "Model installed." if local_ai.installed() else ("Model not downloaded." if local_ai.available() else "Native runtime missing in this build.")
 	personal_fields = VBoxContainer.new()
 	fields.add_child(personal_fields)
 	personal_fields.add_child(UI.label("Model ID", 17))
@@ -258,6 +288,8 @@ func _show_chat() -> void:
 	_update_buttons()
 
 func _access_changed(enabled: bool) -> void:
+	if enabled:
+		offline_mode.set_pressed_no_signal(false)
 	personal_fields.visible = enabled
 	clear_key_button.visible = enabled
 	test_button.text = "Test personal key" if enabled else "Connect as guest"
@@ -279,7 +311,7 @@ func _clear_key() -> void:
 	settings_status.text = "Key cleared."
 
 func _ask() -> void:
-	if online_busy or robot_id.is_empty() or (not personal_mode.button_pressed and (Time.get_ticks_msec() < guest_wait_until or (not guest.has_session() and Time.get_ticks_msec() < auth_wait_until))):
+	if online_busy or local_ai.busy or robot_id.is_empty() or (not offline_mode.button_pressed and not personal_mode.button_pressed and (Time.get_ticks_msec() < guest_wait_until or (not guest.has_session() and Time.get_ticks_msec() < auth_wait_until))):
 		return
 	question = prompt_box.text.strip_edges()
 	if question.is_empty() or question.to_utf8_buffer().size() > 2048:
@@ -291,7 +323,7 @@ func _ask() -> void:
 			permitted.append(tool)
 	var profile: Dictionary = roster.get_profile(robot_id)
 	var context := {}
-	if share_context.button_pressed:
+	if share_context.button_pressed or offline_mode.button_pressed:
 		var binding: Dictionary = skills.get_binding(robot_id)
 		var skill_doc := ""
 		if not binding.is_empty():
@@ -299,6 +331,11 @@ func _ask() -> void:
 			skill_doc = str(skill.get("markdown", "")).left(1000)
 		var recent: Array = histories.get(robot_id, [])
 		context = {"personality": profile.get("personality"), "memory": str(profile.get("memory", "")).left(1000), "skill": skill_doc, "history": recent.slice(maxi(0, recent.size() - 3))}
+		if offline_mode.button_pressed:
+			context = {"personality": str(profile.get("personality", "")).left(128), "memory": str(profile.get("memory", "")).left(250)}
+			if not recent.is_empty():
+				context["last_user"] = str(recent[-1].get("user", "")).left(200)
+				context["last_reply"] = str(recent[-1].get("assistant", "")).left(200)
 	var system := Identity.system_prompt(robot_id, permitted, context)
 	if system.is_empty():
 		status.text = "Unknown Cubot."
@@ -309,7 +346,22 @@ func _test_connection() -> void:
 	_send_online("test", "Reply with a short confirmation.", "Reply OK.")
 
 func _send_online(kind: String, system: String, prompt: String) -> void:
-	if online_busy:
+	if online_busy or local_ai.busy:
+		return
+	if offline_mode.button_pressed:
+		if kind == "test":
+			connection.text = "Offline model installed" if local_ai.installed() else "Download the local model first"
+			return
+		pending = {}
+		if local_ai.generate(system, prompt):
+			local_running = true
+			online_busy = true
+			online_operation = "ask"
+			status.text = "Running on-device AI…"
+			_draw_history()
+			_update_buttons()
+		else:
+			status.text = "Offline model unavailable. Check AI settings."
 		return
 	if not personal_mode.button_pressed:
 		_send_guest(kind, system, prompt)
@@ -377,6 +429,10 @@ func _guest_http(req: Dictionary) -> void:
 	_update_buttons()
 
 func _cancel() -> void:
+	if local_running:
+		local_ai.cancel()
+		status.text = "Stopping local inference…"
+		return
 	if not online_busy:
 		return
 	http.cancel_request()
@@ -636,13 +692,13 @@ func _guest_diagnostic(transport: int, code: int, body: PackedByteArray) -> Stri
 func _update_quota_display() -> void:
 	if not is_instance_valid(quota_label) or not is_instance_valid(test_button):
 		return
-	var is_guest := not personal_mode.button_pressed
+	var is_guest := not personal_mode.button_pressed and not offline_mode.button_pressed
 	var seconds := maxi(0, ceili(float(guest_wait_until - Time.get_ticks_msec()) / 1000.0))
 	var auth_seconds := maxi(0, ceili(float(auth_wait_until - Time.get_ticks_msec()) / 1000.0)) if not guest.has_session() else 0
 	var auth_waiting := is_guest and auth_seconds > 0
 	var waiting := is_guest and seconds > 0
-	ask_button.disabled = online_busy or waiting or auth_waiting
-	test_button.disabled = online_busy or auth_waiting
+	ask_button.disabled = online_busy or local_ai.busy or waiting or auth_waiting
+	test_button.disabled = online_busy or local_ai.busy or auth_waiting
 	if auth_waiting:
 		seconds = maxi(seconds, auth_seconds)
 		waiting = true
@@ -654,6 +710,68 @@ func _update_quota_display() -> void:
 	quota_label.text = remaining_text
 	if is_guest:
 		test_button.text = "Sign-in wait %ds" % auth_seconds if auth_waiting else "Connect as guest"
+	elif offline_mode.button_pressed:
+		test_button.text = "Check offline model"
+	offline_mode.disabled = online_busy or local_ai.busy or not local_ai.available()
+	personal_mode.disabled = online_busy or local_ai.busy
+	download_button.disabled = online_busy or (local_ai.busy and not local_ai.downloading) or not local_ai.available()
+	download_button.text = "Cancel download" if local_ai.downloading else ("Model installed" if local_ai.installed() else "Download & set offline model")
+	if local_ai.installed() and not local_ai.downloading:
+		download_button.disabled = true
+	remove_model_button.disabled = online_busy or local_ai.busy or not local_ai.installed()
+	offline_progress.visible = local_ai.downloading
+	if local_ai.downloading:
+		offline_progress.value = local_ai.progress() * 100.0
+
+func _offline_changed(enabled: bool) -> void:
+	if enabled and not local_ai.installed():
+		offline_mode.set_pressed_no_signal(false)
+		offline_status.text = "Download the model first."
+		return
+	if enabled:
+		personal_mode.set_pressed_no_signal(false)
+		personal_fields.hide()
+		clear_key_button.hide()
+	connection.text = "Offline mode" if enabled else "Not tested"
+	offline_status.text = "Local inference uses no cloud quota." if enabled else "Offline mode off."
+	_update_buttons()
+
+func _download_local() -> void:
+	if local_ai.downloading:
+		auto_select_local = false
+		local_ai.cancel()
+		return
+	auto_select_local = true
+	local_ai.start_download()
+
+func _remove_local() -> void:
+	offline_mode.set_pressed_no_signal(false)
+	local_ai.remove_model()
+	_update_buttons()
+
+func _local_changed(message: String) -> void:
+	offline_status.text = message
+	if auto_select_local and not local_ai.busy and local_ai.installed():
+		auto_select_local = false
+		offline_mode.set_pressed_no_signal(true)
+		_offline_changed(true)
+	_update_buttons()
+
+func _local_completed(result: Dictionary) -> void:
+	local_running = false
+	online_busy = false
+	online_operation = ""
+	var reply := str(result.get("text", ""))
+	if result.get("ok", false) and not reply.strip_edges().is_empty():
+		var saved := _accept_response(reply)
+		prompt_box.clear()
+		status.text = "Offline response received." if pending.is_empty() else "Approve or reject the proposed action."
+		if not saved:
+			status.text += " Local history could not be saved."
+	else:
+		status.text = "Offline AI: " + str(result.get("error", "No response"))
+	_draw_history()
+	_update_buttons()
 
 func _exit_tree() -> void:
 	if online_busy and is_instance_valid(http):
