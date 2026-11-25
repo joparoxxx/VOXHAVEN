@@ -1,6 +1,18 @@
 extends Node3D
 const TaskEngine = preload("res://core/task_engine.gd")
 const Skills = preload("res://core/skill_registry.gd")
+const Roster = preload("res://core/robot_roster.gd")
+var roster = Roster.new()
+var robot_dialog: Window
+var memory_editor: TextEdit
+var personality_editor: LineEdit
+var allow_text: CheckBox
+var allow_png: CheckBox
+var profile_label: Label
+var history_label: RichTextLabel
+var manager_tool: OptionButton
+var robot_dialog_status: Label
+var profile_button: Button
 var skills = Skills.new()
 var skill_dialog: Window
 var skill_source: TextEdit
@@ -27,10 +39,11 @@ var busy := false
 var progress_timer := 0.0
 
 func _ready() -> void:
+	engine.set_permission_checker(Callable(roster, "can_use"))
 	_build_office()
 	_build_ui()
 	engine.task_changed.connect(_on_task_changed)
-	if not engine.is_ready():
+	if not engine.is_ready() or not roster.is_ready():
 		status.text = "Local storage unavailable. Tasks disabled."
 		run_text.disabled = true
 		run_png.disabled = true
@@ -113,7 +126,7 @@ func _build_ui() -> void:
 	var column := VBoxContainer.new()
 	panel.add_child(column)
 	var title := Label.new()
-	title.text = "CUBYTE | Local prototype"
+	title.text = "CUBYTE | Robot system v0.2"
 	column.add_child(title)
 	selection = OptionButton.new()
 	for id in ROBOT_IDS:
@@ -147,7 +160,7 @@ func _build_ui() -> void:
 	status.text = "Offline | No AI model required"
 	column.add_child(status)
 	preview = TextureRect.new()
-	preview.custom_minimum_size = Vector2(128, 128)
+	preview.custom_minimum_size = Vector2(96, 96)
 	preview.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	preview.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	column.add_child(preview)
@@ -162,7 +175,12 @@ func _build_ui() -> void:
 	use_skill.text = "Run equipped skill"
 	use_skill.pressed.connect(_run_skill)
 	column.add_child(use_skill)
+	profile_button = Button.new()
+	profile_button.text = "Robot profile / Manager"
+	profile_button.pressed.connect(_show_robot_profile)
+	column.add_child(profile_button)
 	_build_skill_dialog()
+	_build_robot_dialog()
 	_refresh_binding()
 
 func _queue(tool: String, payload: String) -> void:
@@ -170,12 +188,13 @@ func _queue(tool: String, payload: String) -> void:
 		return
 	pending_id = engine.enqueue(ROBOT_IDS[selected], tool, payload)
 	if pending_id.is_empty():
-		status.text = "Task rejected."
+		status.text = "Task rejected: permission, input or storage error."
 		return
 	busy = true
 	progress_timer = 0.0
 	selection.disabled = true
 	skill_button.disabled = true
+	profile_button.disabled = true
 	run_text.disabled = true
 	run_png.disabled = true
 	cancel_button.disabled = false
@@ -189,8 +208,9 @@ func _reset() -> void:
 	busy = false
 	selection.disabled = false
 	skill_button.disabled = false
-	run_text.disabled = not engine.is_ready()
-	run_png.disabled = not engine.is_ready()
+	profile_button.disabled = false
+	run_text.disabled = not engine.is_ready() or not roster.can_use(ROBOT_IDS[selected], "text")
+	run_png.disabled = not engine.is_ready() or not roster.can_use(ROBOT_IDS[selected], "png")
 	cancel_button.disabled = true
 
 func _process(delta: float) -> void:
@@ -291,7 +311,7 @@ func _equip_skill() -> void:
 		return
 	var name_ := skill_picker.get_item_text(skill_picker.selected)
 	var tool := "text" if tool_picker.selected == 0 else "png"
-	if skills.equip(ROBOT_IDS[selected], name_, tool):
+	if roster.can_use(ROBOT_IDS[selected], tool) and skills.equip(ROBOT_IDS[selected], name_, tool):
 		skill_status.text = "Equipped " + name_ + " with " + tool
 		_refresh_binding()
 	else:
@@ -300,6 +320,9 @@ func _equip_skill() -> void:
 func _refresh_binding() -> void:
 	var binding: Dictionary = skills.get_binding(ROBOT_IDS[selected])
 	skill_summary.text = "Skill: none" if binding.is_empty() else "Skill: " + str(binding["skill"]) + " / " + str(binding["tool"])
+	if not busy:
+		run_text.disabled = not engine.is_ready() or not roster.can_use(ROBOT_IDS[selected], "text")
+		run_png.disabled = not engine.is_ready() or not roster.can_use(ROBOT_IDS[selected], "png")
 
 func _run_skill() -> void:
 	if busy:
@@ -309,4 +332,113 @@ func _run_skill() -> void:
 		status.text = "Equip a skill first."
 		return
 	var tool: String = binding["tool"]
+	_queue(tool, input.text if tool == "text" else "")
+
+func _build_robot_dialog() -> void:
+	robot_dialog = Window.new()
+	robot_dialog.title = "Robot management"
+	robot_dialog.size = Vector2i(570, 500)
+	robot_dialog.exclusive = true
+	robot_dialog.transient = true
+	robot_dialog.visible = false
+	add_child(robot_dialog)
+	robot_dialog.close_requested.connect(func(): robot_dialog.hide())
+	var margin := MarginContainer.new()
+	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "top", "right", "bottom"]:
+		margin.add_theme_constant_override("margin_" + side, 10)
+	robot_dialog.add_child(margin)
+	var column := VBoxContainer.new()
+	margin.add_child(column)
+	profile_label = Label.new()
+	profile_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	column.add_child(profile_label)
+	personality_editor = LineEdit.new()
+	personality_editor.placeholder_text = "Personality"
+	personality_editor.max_length = 128
+	column.add_child(personality_editor)
+	memory_editor = TextEdit.new()
+	memory_editor.placeholder_text = "Private robot notes / memory"
+	memory_editor.custom_minimum_size.y = 70
+	column.add_child(memory_editor)
+	var permissions := HBoxContainer.new()
+	column.add_child(permissions)
+	allow_text = CheckBox.new()
+	allow_text.text = "Allow TXT"
+	permissions.add_child(allow_text)
+	allow_png = CheckBox.new()
+	allow_png.text = "Allow PNG"
+	permissions.add_child(allow_png)
+	var save := Button.new()
+	save.text = "Save profile and permissions"
+	save.pressed.connect(_save_robot_profile)
+	column.add_child(save)
+	var history_title := Label.new()
+	history_title.text = "Recent tasks (local, actual results)"
+	column.add_child(history_title)
+	history_label = RichTextLabel.new()
+	history_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	history_label.custom_minimum_size.y = 75
+	column.add_child(history_label)
+	manager_tool = OptionButton.new()
+	manager_tool.add_item("TXT")
+	manager_tool.add_item("PNG")
+	column.add_child(manager_tool)
+	var delegate_button := Button.new()
+	delegate_button.text = "ATLAS: assign task to eligible worker"
+	delegate_button.pressed.connect(_delegate_task)
+	column.add_child(delegate_button)
+	robot_dialog_status = Label.new()
+	robot_dialog_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	column.add_child(robot_dialog_status)
+
+func _show_robot_profile() -> void:
+	if busy:
+		return
+	var id: String = ROBOT_IDS[selected]
+	var profile: Dictionary = roster.get_profile(id)
+	if profile.is_empty():
+		status.text = "Robot profile unavailable."
+		return
+	profile_label.text = id.to_upper() + " | " + str(profile["role"]) + " | " + str(profile["specialization"]) + "\nSkills: " + str(skills.inventory(id))
+	personality_editor.text = profile["personality"]
+	memory_editor.text = profile["memory"]
+	allow_text.button_pressed = roster.can_use(id, "text")
+	allow_png.button_pressed = roster.can_use(id, "png")
+	history_label.clear()
+	var tasks: Array = engine.history(id)
+	if tasks.is_empty():
+		history_label.add_text("No recorded tasks.")
+	for task in tasks:
+		history_label.add_text("#" + str(task["id"]) + "  " + str(task["tool"]) + "  " + str(task["status"]) + "\n")
+	robot_dialog_status.text = "Rule-based routing; no AI model yet."
+	robot_dialog.popup_centered()
+
+func _save_robot_profile() -> void:
+	var id: String = ROBOT_IDS[selected]
+	if personality_editor.text.strip_edges().is_empty() or personality_editor.text.to_utf8_buffer().size() > 128 or memory_editor.text.to_utf8_buffer().size() > 4096:
+		robot_dialog_status.text = "Invalid personality or memory exceeds 4096 bytes."
+		return
+	var ok: bool = roster.set_personality(id, personality_editor.text)
+	ok = roster.set_memory(id, memory_editor.text) and ok
+	ok = roster.set_permission(id, "text", allow_text.button_pressed) and ok
+	ok = roster.set_permission(id, "png", allow_png.button_pressed) and ok
+	_refresh_binding()
+	robot_dialog_status.text = "Saved locally." if ok else "One or more settings failed to save. Reopen to check."
+
+func _delegate_task() -> void:
+	if busy:
+		return
+	var tool := "text" if manager_tool.selected == 0 else "png"
+	var worker: String = roster.delegate(tool)
+	if worker.is_empty():
+		robot_dialog_status.text = "No worker has permission for this tool."
+		return
+	var worker_index := ROBOT_IDS.find(worker)
+	if worker_index < 0:
+		return
+	robot_dialog.hide()
+	selected = worker_index
+	selection.select(selected)
+	_refresh_binding()
 	_queue(tool, input.text if tool == "text" else "")
