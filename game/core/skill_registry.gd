@@ -1,4 +1,5 @@
 extends RefCounted
+const Bus = preload("res://core/event_bus.gd")
 ## Safe, deliberately restricted SKILL.md metadata registry.
 ## Imported text is data; no scripts, shell commands or network access.
 const MAX_BYTES := 65536
@@ -72,6 +73,7 @@ func import_markdown(markdown: String) -> String:
 	if not _save():
 		_skills.erase(name_)
 		return ""
+	Bus.publish("skill.imported", {"skill": name_})
 	return name_
 
 func list_names() -> Array:
@@ -111,6 +113,7 @@ func equip(robot_id: String, name_: String, tool: String) -> bool:
 		else:
 			_bindings[robot_id] = previous
 		return false
+	Bus.publish("skill.assigned", {"robot_id": robot_id, "skill": name_, "tool": tool})
 	return true
 
 func _save() -> bool:
