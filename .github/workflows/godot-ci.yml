@@ -97,6 +97,12 @@ jobs:
           timeout 120s Godot_v4.4.1-stable_linux.x86_64 --headless --path game --script res://tests/test_workspace.gd 2>&1 | tee /tmp/workspace.log
           if grep -E 'SCRIPT ERROR|ERROR: Failed to load script' /tmp/workspace.log; then exit 1; fi
           grep -Fx 'CUBYTE workspace tests: 0 failures' /tmp/workspace.log
+      - name: Gameplay progression tests
+        run: |
+          set -o pipefail
+          timeout 120s Godot_v4.4.1-stable_linux.x86_64 --headless --path game --script res://tests/test_gameplay.gd 2>&1 | tee /tmp/gameplay.log
+          if grep -E 'SCRIPT ERROR|ERROR: Failed to load script' /tmp/gameplay.log; then exit 1; fi
+          grep -Fx 'CUBYTE gameplay tests: 0 failures' /tmp/gameplay.log
       - name: Scene smoke
         run: |
           set -o pipefail
