@@ -2,6 +2,8 @@ extends Node3D
 const TaskEngine = preload("res://core/task_engine.gd")
 const Skills = preload("res://core/skill_registry.gd")
 const Roster = preload("res://core/robot_roster.gd")
+const AIConsole = preload("res://scenes/ai_console.gd")
+var ai_console
 var roster = Roster.new()
 var robot_dialog: Window
 var memory_editor: TextEdit
@@ -126,7 +128,7 @@ func _build_ui() -> void:
 	var column := VBoxContainer.new()
 	panel.add_child(column)
 	var title := Label.new()
-	title.text = "CUBYTE | Robot system v0.2"
+	title.text = "CUBYTE | Local AI v0.3"
 	column.add_child(title)
 	selection = OptionButton.new()
 	for id in ROBOT_IDS:
@@ -179,6 +181,15 @@ func _build_ui() -> void:
 	profile_button.text = "Robot profile / Manager"
 	profile_button.pressed.connect(_show_robot_profile)
 	column.add_child(profile_button)
+	var ai_button := Button.new()
+	ai_button.text = "Talk to robot / Local AI"
+	ai_button.pressed.connect(_show_ai)
+	column.add_child(ai_button)
+	ai_console = AIConsole.new()
+	ai_console.configure(roster, skills)
+	ai_console.visible = false
+	add_child(ai_console)
+	ai_console.proposal_approved.connect(_ai_task)
 	_build_skill_dialog()
 	_build_robot_dialog()
 	_refresh_binding()
@@ -442,3 +453,19 @@ func _delegate_task() -> void:
 	selection.select(selected)
 	_refresh_binding()
 	_queue(tool, input.text if tool == "text" else "")
+
+func _show_ai() -> void:
+	if not busy:
+		ai_console.show_for(ROBOT_IDS[selected])
+
+func _ai_task(robot_id: String, tool: String, payload: String) -> void:
+	if busy or not roster.can_use(robot_id, tool):
+		status.text = "AI tool request denied or worker busy."
+		return
+	var index := ROBOT_IDS.find(robot_id)
+	if index < 0:
+		return
+	selected = index
+	selection.select(index)
+	_refresh_binding()
+	_queue(tool, payload)
