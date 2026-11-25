@@ -383,6 +383,7 @@ func _on_task_changed(task: Dictionary) -> void:
 func _build_skill_dialog() -> void:
 	skill_dialog = Window.new()
 	skill_dialog.title = "Cubot skills"
+	UI.configure_modal(skill_dialog)
 	skill_dialog.size = Vector2i(450, 820)
 	skill_dialog.exclusive = true
 	skill_dialog.transient = true
@@ -436,7 +437,7 @@ func _show_skills() -> void:
 		return
 	_refresh_skill_picker()
 	skill_status.text = "Assign to " + ROBOT_IDS[selected].to_upper()
-	skill_dialog.popup_centered_ratio(0.94)
+	UI.show_modal(skill_dialog)
 
 func _refresh_skill_picker() -> void:
 	skill_picker.clear()
@@ -490,6 +491,7 @@ func _run_skill() -> void:
 func _build_robot_dialog() -> void:
 	robot_dialog = Window.new()
 	robot_dialog.title = "Cubot profile"
+	UI.configure_modal(robot_dialog)
 	robot_dialog.size = Vector2i(450, 820)
 	robot_dialog.exclusive = true
 	robot_dialog.transient = true
@@ -582,7 +584,7 @@ func _show_robot_profile() -> void:
 			route = requester.to_upper() + " → " + route
 		history_label.add_text("#" + str(task["id"]) + "  " + route + "  " + str(task["tool"]) + "  " + str(task["status"]) + "\n")
 	robot_dialog_status.text = "Local profile and rule-based task routing."
-	robot_dialog.popup_centered_ratio(0.94)
+	UI.show_modal(robot_dialog)
 
 func _save_robot_profile() -> void:
 	if selected < 0 or busy:
