@@ -57,6 +57,17 @@ var cancel_button: Button
 var pending_id := ""
 var busy := false
 var progress_timer := 0.0
+const Navigation = preload("res://core/office_navigation.gd")
+var navigator = Navigation.new()
+var route: Array[Vector3] = []
+var eyes: Array = []
+var mouths: Array[MeshInstance3D] = []
+var face_clock := 0.0
+var face_states := ["idle", "idle", "idle"]
+var face_until := [0.0, 0.0, 0.0]
+var robot_bodies: Array[MeshInstance3D] = []
+var desks: Array[Node3D] = []
+var workstation_ids := [0, 1, 2]
 
 func _ready() -> void:
 	engine.set_permission_checker(Callable(roster, "can_use"))
@@ -108,10 +119,16 @@ func _build_office() -> void:
 	_box(self, Vector3(0.15, 2, 8), Vector3(-5, 1, 0), Color("#909ba6"))
 	for i in range(3):
 		var x := float(i - 1) * 2.7
-		_box(self, Vector3(1.8, 0.9, 0.85), Vector3(x, 0.45, -2.6), Color("#b8bec7"))
-		_box(self, Vector3(0.85, 0.55, 0.12), Vector3(x, 1.22, -2.75), Color("#263749"))
+		var desk := Node3D.new()
+		add_child(desk)
+		desk.position = Vector3(x, 0, -2.6)
+		desks.append(desk)
+		_box(desk, Vector3(1.8, 0.9, 0.85), Vector3(0, 0.45, 0), Color("#b8bec7"))
+		_box(desk, Vector3(0.85, 0.55, 0.12), Vector3(0, 1.22, -0.15), Color("#263749"))
 		_build_robot(Vector3(x, 0, 0.5), ROBOT_COLORS[i])
 	_box(self, Vector3(1.8, 0.15, 1.3), Vector3(3.5, 0.08, 2.4), Color("#4a6b72"))
+	_restore_layout()
+	_rebuild_navigation()
 
 func _build_robot(position_: Vector3, color: Color) -> void:
 	var robot := Node3D.new()
@@ -155,14 +172,16 @@ func _build_robot(position_: Vector3, color: Color) -> void:
 	roller.material_override = mat
 	robot.add_child(roller)
 	wheels.append(roller)
-	_box(robot, Vector3(0.82, 0.82, 0.82), Vector3(0, 0.79, 0), color)
+	robot_bodies.append(_box(robot, Vector3(0.82, 0.82, 0.82), Vector3(0, 0.79, 0), color))
 	_box(robot, Vector3(0.65, 0.56, 0.04), Vector3(0, 0.82, 0.43), Color("#101b29"))
+	var pair: Array[MeshInstance3D] = []
 	for side in [-1, 1]:
-		_box(robot, Vector3(0.10, 0.17, 0.035), Vector3(side * 0.15, 0.88, 0.46), Color("#83f5df"))
+		pair.append(_box(robot, Vector3(0.10, 0.17, 0.035), Vector3(side * 0.15, 0.88, 0.46), Color("#83f5df")))
 		_box(robot, Vector3(0.18, 0.13, 0.14), Vector3(side * 0.49, 0.84, 0), Color("#b9c5d0"))
 		_box(robot, Vector3(0.13, 0.37, 0.13), Vector3(side * 0.59, 0.67, 0), Color("#7b8b9d"))
 		_box(robot, Vector3(0.19, 0.13, 0.18), Vector3(side * 0.59, 0.48, 0.04), color)
-	_box(robot, Vector3(0.16, 0.045, 0.035), Vector3(0, 0.69, 0.46), Color("#83f5df"))
+	eyes.append(pair)
+	mouths.append(_box(robot, Vector3(0.16, 0.045, 0.035), Vector3(0, 0.69, 0.46), Color("#83f5df")))
 
 func _build_ui() -> void:
 	var layer := CanvasLayer.new()
@@ -350,7 +369,13 @@ func _queue(tool: String, payload: String, requested_by: String = "") -> void:
 	_start_queued()
 
 func _start_queued() -> void:
+	var target := desks[workstation_ids[selected]].position + Vector3(0, 0, 1.6)
+	route = navigator.route(robots[selected].position, target)
+	if route.is_empty():
+		status.text = "No clear route to workstation. Task remains queued."
+		return
 	busy = true
+	face_states[selected] = "working"
 	progress_timer = 0.0
 	chat_button.disabled = true
 	settings_button.disabled = true
@@ -368,6 +393,7 @@ func _cancel() -> void:
 
 func _reset() -> void:
 	busy = false
+	route.clear()
 	chat_button.disabled = false
 	settings_button.disabled = false
 	skill_button.disabled = false
@@ -376,20 +402,53 @@ func _reset() -> void:
 	cancel_button.disabled = true
 
 func _process(delta: float) -> void:
+	face_clock += delta
+	_update_faces()
 	if not busy:
 		return
 	var robot := robots[selected]
-	if robot.position.z > -1.2:
-		robot.position.z = move_toward(robot.position.z, -1.2, delta * 3.0)
-		wheels[selected].rotate_x(-delta * 8.0)
+	if not route.is_empty():
+		var waypoint: Vector3 = route[0]
+		var before := robot.position
+		robot.position = before.move_toward(waypoint, delta * 3.0)
+		if robot.position.distance_to(before) > 0.001:
+			wheels[selected].rotate_x(-delta * 8.0)
+		if robot.position.distance_to(waypoint) < 0.01:
+			route.pop_front()
 		return
 	progress_timer += delta
 	if progress_timer >= 0.15:
 		cancel_button.disabled = true
 		var current := pending_id
-		# The visual delay is a robot walk-up; execution itself is real.
 		engine.run_task(current)
 		_reset()
+
+func _update_faces() -> void:
+	for i in range(eyes.size()):
+		if face_until[i] > 0 and face_clock > face_until[i]:
+			face_states[i] = "idle"
+			face_until[i] = 0.0
+		var state: String = face_states[i]
+		if is_instance_valid(ai_console) and ai_console.online_busy and ai_console.robot_id == ROBOT_IDS[i] and ai_console.online_operation == "ask":
+			state = "thinking"
+		var blink := fmod(face_clock + i * 0.8, 4.1) < 0.13
+		var scale_y := 0.12 if blink else 1.0
+		var color := Color("#83f5df")
+		if state == "working":
+			scale_y = 0.45 + 0.2 * sin(face_clock * 7)
+		elif state == "thinking":
+			scale_y = 0.55 + 0.3 * sin(face_clock * 5 + i)
+		elif state == "success":
+			scale_y = 0.42
+		elif state == "error":
+			color = Color("#ff7777")
+		elif state == "sleeping":
+			scale_y = 0.12
+		for eye in eyes[i]:
+			eye.scale.y = scale_y
+			eye.material_override.albedo_color = color
+		mouths[i].scale.x = 1.5 if state == "success" else 1.0
+		mouths[i].material_override.albedo_color = color
 
 func _on_task_changed(task: Dictionary) -> void:
 	var requester := str(task.get("requested_by", ""))
@@ -397,6 +456,10 @@ func _on_task_changed(task: Dictionary) -> void:
 	if not requester.is_empty():
 		route = requester.to_upper() + " → " + route
 	status.text = route + ": " + str(task["status"])
+	var worker := ROBOT_IDS.find(str(task["robot_id"]))
+	if worker >= 0 and task["status"] in ["succeeded", "failed", "cancelled", "interrupted"]:
+		face_states[worker] = "success" if task["status"] == "succeeded" else ("idle" if task["status"] == "cancelled" else "error")
+		face_until[worker] = face_clock + 3.0
 	if task["status"] == "succeeded":
 		status.text += "\n" + str(task["artifact"])
 		if task["tool"] == "png":
@@ -721,3 +784,9 @@ func _export_skill() -> void:
 	else:
 		DisplayServer.clipboard_set(skills.export_markdown(name_))
 		skill_status.text = "Saved to " + path + " and copied SKILL.md to clipboard."
+
+func _rebuild_navigation() -> void:
+	navigator = Navigation.new()
+	for desk in desks:
+		navigator.block_box(desk.position, Vector2(1.35, 0.85))
+	navigator.block_box(Vector3(3.5, 0, 2.4), Vector2(1.35, 1.1))
