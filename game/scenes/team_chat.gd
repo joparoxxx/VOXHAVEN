@@ -23,8 +23,7 @@ var cooldown_until := 0
 
 func _ready() -> void:
 	title = "CUBYTE | Team Chat"
-	transient = true
-	exclusive = true
+	UI.configure_modal(self)
 	size = Vector2i(450, 860)
 	close_requested.connect(_close)
 	var margin := MarginContainer.new()
@@ -80,7 +79,7 @@ func show_team(source: Object) -> void:
 	if busy:
 		return
 	console = source
-	popup_centered_ratio(0.96)
+	UI.show_modal(self)
 	_refresh()
 
 func _start() -> void:
