@@ -1,4 +1,8 @@
 extends Node3D
+const Tools = preload("res://core/tool_registry.gd")
+var extra_permissions := {}
+var local_tool: OptionButton
+var local_payload: TextEdit
 const TaskEngine = preload("res://core/task_engine.gd")
 const Skills = preload("res://core/skill_registry.gd")
 const Roster = preload("res://core/robot_roster.gd")
@@ -244,6 +248,16 @@ func _build_ui() -> void:
 	column.add_child(run_text)
 	run_png = UI.button("Create sample PNG", func(): _queue("png", ""))
 	column.add_child(run_png)
+	local_tool = OptionButton.new()
+	for id in Tools.IDS:
+		local_tool.add_item(Tools.describe(id)["label"])
+	column.add_child(local_tool)
+	local_payload = TextEdit.new()
+	local_payload.custom_minimum_size.y = 100
+	local_payload.placeholder_text = "Payload (CSV/XLSX: JSON rows; SVG: color JSON; OBJ: cube/pyramid)"
+	local_payload.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
+	column.add_child(local_payload)
+	column.add_child(UI.button("Create selected file", _create_selected_file))
 	cancel_button = UI.button("Cancel task", _cancel)
 	cancel_button.disabled = true
 	column.add_child(cancel_button)
@@ -419,8 +433,8 @@ func _build_skill_dialog() -> void:
 	skill_picker.custom_minimum_size.y = 60
 	column.add_child(skill_picker)
 	tool_picker = OptionButton.new()
-	tool_picker.add_item("TXT (native text)")
-	tool_picker.add_item("PNG (native sample image)")
+	for id in Tools.IDS:
+		tool_picker.add_item(Tools.describe(id)["label"])
 	tool_picker.custom_minimum_size.y = 60
 	column.add_child(tool_picker)
 	var equip_button := Button.new()
@@ -459,7 +473,7 @@ func _equip_skill() -> void:
 	if busy or selected < 0 or skill_picker.selected < 0:
 		return
 	var name_ := skill_picker.get_item_text(skill_picker.selected)
-	var tool := "text" if tool_picker.selected == 0 else "png"
+	var tool: String = Tools.IDS[tool_picker.selected]
 	if roster.can_use(ROBOT_IDS[selected], tool) and skills.equip(ROBOT_IDS[selected], name_, tool):
 		skill_status.text = "Equipped " + name_ + " with " + tool
 		_refresh_binding()
@@ -486,7 +500,7 @@ func _run_skill() -> void:
 		status.text = "Equip a skill first."
 		return
 	var tool: String = binding["tool"]
-	_queue(tool, input.text if tool == "text" else "")
+	_queue(tool, ("" if tool == "png" else (input.text if tool == "text" else local_payload.text)))
 
 func _build_robot_dialog() -> void:
 	robot_dialog = Window.new()
@@ -532,6 +546,13 @@ func _build_robot_dialog() -> void:
 	allow_png = CheckBox.new()
 	allow_png.text = "Allow PNG"
 	permissions.add_child(allow_png)
+	for id in Tools.IDS:
+		if id in ["text", "png"]:
+			continue
+		var check := CheckBox.new()
+		check.text = "Allow " + str(Tools.describe(id)["label"])
+		column.add_child(check)
+		extra_permissions[id] = check
 	var save := Button.new()
 	save.custom_minimum_size.y = 60
 	save.text = "Save profile and permissions"
@@ -545,8 +566,8 @@ func _build_robot_dialog() -> void:
 	history_label.custom_minimum_size.y = 75
 	column.add_child(history_label)
 	manager_tool = OptionButton.new()
-	manager_tool.add_item("TXT")
-	manager_tool.add_item("PNG")
+	for id in Tools.IDS:
+		manager_tool.add_item(Tools.describe(id)["label"])
 	manager_tool.custom_minimum_size.y = 60
 	column.add_child(manager_tool)
 	delegate_button = Button.new()
@@ -571,6 +592,8 @@ func _show_robot_profile() -> void:
 	memory_editor.text = profile["memory"]
 	allow_text.button_pressed = roster.can_use(id, "text")
 	allow_png.button_pressed = roster.can_use(id, "png")
+	for tool in extra_permissions:
+		extra_permissions[tool].button_pressed = roster.can_use(id, tool)
 	history_label.clear()
 	manager_tool.visible = id == "atlas"
 	delegate_button.visible = id == "atlas"
@@ -597,13 +620,15 @@ func _save_robot_profile() -> void:
 	ok = roster.set_memory(id, memory_editor.text) and ok
 	ok = roster.set_permission(id, "text", allow_text.button_pressed) and ok
 	ok = roster.set_permission(id, "png", allow_png.button_pressed) and ok
+	for tool in extra_permissions:
+		ok = roster.set_permission(id, tool, extra_permissions[tool].button_pressed) and ok
 	_refresh_binding()
 	robot_dialog_status.text = "Saved locally." if ok else "One or more settings failed to save. Reopen to check."
 
 func _delegate_task() -> void:
 	if busy or selected != 0:
 		return
-	var tool := "text" if manager_tool.selected == 0 else "png"
+	var tool: String = Tools.IDS[manager_tool.selected]
 	if not roster.can_use("atlas", tool):
 		robot_dialog_status.text = "ATLAS lacks permission for this tool."
 		return
@@ -616,7 +641,7 @@ func _delegate_task() -> void:
 		return
 	robot_dialog.hide()
 	_select_cubot(worker_index)
-	_queue(tool, input.text if tool == "text" else "", "atlas")
+	_queue(tool, ("" if tool == "png" else (input.text if tool == "text" else local_payload.text)), "atlas")
 
 func _show_ai() -> void:
 	if not busy and selected >= 0:
@@ -642,3 +667,9 @@ func _ai_task(robot_id: String, tool: String, payload: String, worker_id: String
 func _show_team() -> void:
 	if not busy and not ai_console.online_busy:
 		team_chat.call("show_team", ai_console)
+
+func _create_selected_file() -> void:
+	if selected < 0 or busy or local_tool.selected < 0:
+		return
+	var tool: String = Tools.IDS[local_tool.selected]
+	_queue(tool, "" if tool == "png" else local_payload.text)
