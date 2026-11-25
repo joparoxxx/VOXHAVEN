@@ -53,7 +53,9 @@ async function reserve(env,kind,uid,ip) {
   const hashedUID=uid ? await digest(uid) : "";
   const stub=env.QUOTA.get(env.QUOTA.idFromName("global-v1"));
   const response=await stub.fetch("https://quota.internal/reserve",{method:"POST",body:JSON.stringify({plan:quotaPlan(kind,hashedUID,hashedIP,env)})});
-  return response.status===200;
+  if(response.status===200)return true;
+  if(response.status===429)return false;
+  throw new Error("QUOTA_STORAGE_ERROR");
 }
 export class Quota extends DurableObject {
   constructor(ctx,env) {
@@ -84,7 +86,15 @@ async function firebase(env,kind,body) {
   const res=await fetch(url,{method:"POST",redirect:"error",signal:AbortSignal.timeout(15000),
     headers:{"Content-Type":refresh?"application/x-www-form-urlencoded":"application/json"},
     body:refresh?new URLSearchParams({grant_type:"refresh_token",refresh_token:body.refresh_token}):JSON.stringify({returnSecureToken:true})});
-  if(!res.ok)return error("AUTH_UNAVAILABLE",res.status===400&&refresh?401:503);
+  if(!res.ok){
+    let reason="OTHER";
+    try {
+      const message=String((await res.json())?.error?.message||"").split(" : ")[0];
+      if(["OPERATION_NOT_ALLOWED","ADMIN_ONLY_OPERATION","API_KEY_INVALID","INVALID_API_KEY","PROJECT_NOT_FOUND","CONFIGURATION_NOT_FOUND","TOO_MANY_ATTEMPTS_TRY_LATER","INVALID_REFRESH_TOKEN","TOKEN_EXPIRED","USER_DISABLED","USER_NOT_FOUND"].includes(message))reason=message;
+    } catch {}
+    console.warn("firebase_auth_status",res.status,reason);
+    return error("AUTH_"+reason,res.status===400&&refresh?401:503);
+  }
   const r=await res.json();
   const token=refresh?r.id_token:r.idToken, next=refresh?r.refresh_token:r.refreshToken;
   if(typeof token!=="string"||typeof next!=="string")return error("AUTH_UNAVAILABLE",503);
@@ -98,18 +108,23 @@ export default {async fetch(req,env) {
   const ip=req.headers.get("CF-Connecting-IP");
   if(!ip)return error("NETWORK_UNAVAILABLE",503);
   let body;try{body=await bodyJson(req);}catch{return error("INVALID_BODY",400);}
+  let stage="QUOTA";
   try {
     if(path!=="/chat"){
       const kind=path.slice(1);
       if(!await reserve(env,kind,"",ip))return error("DAILY_LIMIT",429);
+      stage="FIREBASE";
       return await firebase(env,kind,body);
     }
+    stage="AUTH";
     const auth=req.headers.get("Authorization")||"";
     const uid=auth.startsWith("Bearer ")?await verifiedUid(auth.slice(7),env.FIREBASE_PROJECT_ID):null;
     if(!uid)return error("AUTH_REQUIRED",401);
     const input=chatInput(body);
     if(!input)return error("INVALID_MESSAGE",400);
+    stage="QUOTA";
     if(!await reserve(env,"chat",uid,ip))return error("DAILY_LIMIT",429);
+    stage="OPENAI";
     const response=await fetch("https://api.openai.com/v1/chat/completions",{
       method:"POST",redirect:"error",signal:AbortSignal.timeout(65000),
       headers:{"Content-Type":"application/json","Authorization":"Bearer "+env.OPENAI_API_KEY},
@@ -123,5 +138,9 @@ export default {async fetch(req,env) {
     const reply=data?.choices?.[0]?.message?.content;
     if(typeof reply!=="string"||!reply.trim()||reply.length>16384||reply.includes(env.OPENAI_API_KEY))return error("AI_UNAVAILABLE",503);
     return json({choices:[{message:{content:reply}}]});
-  } catch {return error("SERVICE_UNAVAILABLE",503);}
+  } catch(e) {
+    // Do not log error messages, request payloads, credentials, or tokens.
+    console.warn("gateway_failure",stage,e instanceof TypeError?"TypeError":e instanceof Error?"Error":"Unknown");
+    return error(stage+"_UNAVAILABLE",503);
+  }
 }};
