@@ -12,6 +12,9 @@ func _initialize() -> void:
 	check(Policy.proposal('{"tool":"png","payload":"","extra":true}').is_empty(), "reject extra fields")
 	check(Policy.proposal('{"tool":"png","payload":"unexpected"}').is_empty(), "reject png payload")
 	check(Policy.proposal("not JSON").is_empty(), "reject malformed response")
+	check(Policy.proposal("I can offer a sample.\n```json\n{\"tool\":\"png\",\"payload\":\"\"}\n```").get("tool") == "png", "fenced proposal with prose")
+	check(Policy.proposal("```json\n{\"tool\":\"shell\",\"payload\":\"ls\"}\n```").is_empty(), "reject fenced unsafe tool")
+	check(Policy.proposal("```json\n{\"tool\":\"png\",\"payload\":\"\"}\n```\n```json\n{}\n```").is_empty(), "reject ambiguous multiple blocks")
 	check(Policy.proposal(JSON.stringify({"tool":"text","payload":"a".repeat(4097)})).is_empty(), "bound output")
 	check(not Policy.valid_model_path("user://missing.gguf"), "missing model")
 	var path := "user://ai_test_" + str(Time.get_ticks_usec()) + ".gguf"
