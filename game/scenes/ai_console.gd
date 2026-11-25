@@ -1,6 +1,13 @@
 extends Window
 const Policy = preload("res://core/ai_policy.gd")
 const Online = preload("res://core/online_ai.gd")
+const Guest = preload("res://core/guest_ai.gd")
+var guest = Guest.new()
+var personal_mode: CheckBox
+var personal_fields: VBoxContainer
+var guest_system := ""
+var guest_prompt := ""
+var auth_pending := false
 const Identity = preload("res://core/cubot_identity.gd")
 const UI = preload("res://ui/mobile_theme.gd")
 signal proposal_approved(robot_id: String, tool: String, payload: String)
@@ -121,21 +128,27 @@ func _ready() -> void:
 	var fields := VBoxContainer.new()
 	fields.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(fields)
-	fields.add_child(UI.label("OpenAI connection", 23))
-	fields.add_child(UI.label("One API key and model for all Cubots.", 17, UI.MUTED))
-	fields.add_child(UI.label("Model ID", 17))
+	fields.add_child(UI.label("AI access", 23))
+	fields.add_child(UI.label("Guest mode needs no registration or API key. Your guest account is created when you first connect.", 17, UI.MUTED))
+	personal_mode = CheckBox.new()
+	personal_mode.text = "Use my own OpenAI key"
+	personal_mode.custom_minimum_size.y = 60
+	fields.add_child(personal_mode)
+	personal_fields = VBoxContainer.new()
+	fields.add_child(personal_fields)
+	personal_fields.add_child(UI.label("Model ID", 17))
 	model_editor = LineEdit.new()
 	model_editor.custom_minimum_size.y = 60
 	model_editor.placeholder_text = "OpenAI model ID"
 	model_editor.max_length = 200
-	fields.add_child(model_editor)
-	fields.add_child(UI.label("API key", 17))
+	personal_fields.add_child(model_editor)
+	personal_fields.add_child(UI.label("API key", 17))
 	key_editor = LineEdit.new()
 	key_editor.secret = true
 	key_editor.custom_minimum_size.y = 60
 	key_editor.placeholder_text = "Paste API key"
 	key_editor.max_length = 4096
-	fields.add_child(key_editor)
+	personal_fields.add_child(key_editor)
 	var key_row := HBoxContainer.new()
 	fields.add_child(key_row)
 	test_button = UI.button("Test connection", _test_connection, true)
@@ -143,12 +156,16 @@ func _ready() -> void:
 	key_row.add_child(test_button)
 	clear_key_button = UI.button("Clear key", _clear_key)
 	key_row.add_child(clear_key_button)
+	personal_mode.toggled.connect(_access_changed)
+	personal_fields.hide()
+	clear_key_button.hide()
+	test_button.text = "Connect as guest"
 	share_context = CheckBox.new()
 	share_context.custom_minimum_size.y = 60
 	share_context.text = "Share extra context"
 	fields.add_child(share_context)
 	fields.add_child(UI.label("Allows sending this Cubot’s memory, skills and recent chat to OpenAI.", 16, UI.MUTED))
-	fields.add_child(UI.label("Messages go to OpenAI. Extra context is optional. Requests may use paid API credits. The key is not saved to disk.", 16, UI.MUTED))
+	fields.add_child(UI.label("Guest AI uses CUBYTE’s server and daily limits. Messages go to OpenAI. Personal API requests use your own credits. Extra context is optional.", 16, UI.MUTED))
 	connection = UI.label("Not tested", 18)
 	fields.add_child(connection)
 	settings_status = UI.label("", 16, UI.MUTED)
@@ -180,10 +197,7 @@ func show_for(id: String) -> void:
 	title = "Chat | " + id.to_upper()
 	status.text = "Ask your Cubot a question."
 	_draw_history()
-	if key_editor.text.strip_edges().is_empty() or model_editor.text.strip_edges().is_empty():
-		_show_settings()
-	else:
-		_show_chat()
+	_show_chat()
 	popup_centered_ratio(0.96)
 
 func show_settings_for(id: String) -> void:
@@ -218,6 +232,13 @@ func _show_chat() -> void:
 	chat_page.show()
 	settings_button.show()
 	_update_buttons()
+
+func _access_changed(enabled: bool) -> void:
+	personal_fields.visible = enabled
+	clear_key_button.visible = enabled
+	test_button.text = "Test personal key" if enabled else "Connect as guest"
+	_credentials_changed("")
+	settings_status.text = "Guest mode: no key needed." if not enabled else "Enter your personal API details."
 
 func _credentials_changed(_value: String) -> void:
 	verified = false
@@ -266,6 +287,9 @@ func _test_connection() -> void:
 func _send_online(kind: String, system: String, prompt: String) -> void:
 	if online_busy:
 		return
+	if not personal_mode.button_pressed:
+		_send_guest(kind, system, prompt)
+		return
 	var req: Dictionary = Online.make_request("openai", model_editor.text, key_editor.text, system, prompt)
 	if req.is_empty():
 		status.text = "Enter a valid OpenAI model ID and API key in AI settings."
@@ -288,10 +312,50 @@ func _send_online(kind: String, system: String, prompt: String) -> void:
 	_draw_history()
 	_update_buttons()
 
+func _send_guest(kind: String, system: String, prompt: String) -> void:
+	if not guest.configured():
+		status.text = "Guest AI server is not configured yet. Local gameplay is available."
+		settings_status.text = status.text
+		return
+	pending = {}
+	online_operation = kind
+	guest_system = system
+	guest_prompt = prompt
+	request_key = ""
+	online_busy = true
+	if kind == "test" and guest.has_session():
+		online_busy = false
+		online_operation = ""
+		connection.text = "Guest connected"
+		settings_status.text = "Guest session ready."
+		_update_buttons()
+		return
+	auth_pending = not guest.has_session()
+	var req: Dictionary = guest.auth_request() if auth_pending else guest.chat_request(robot_id, system, prompt)
+	_guest_http(req)
+
+func _guest_http(req: Dictionary) -> void:
+	var err := ERR_INVALID_PARAMETER
+	if not req.is_empty():
+		err = http.request(req["url"], req["headers"], HTTPClient.METHOD_POST, req["body"])
+	if err != OK:
+		online_busy = false
+		online_operation = ""
+		auth_pending = false
+		status.text = "Could not connect to guest AI."
+	else:
+		status.text = "Connecting guest..." if auth_pending else robot_id.to_upper() + " is thinking..."
+	settings_status.text = status.text
+	_draw_history()
+	_update_buttons()
+
 func _cancel() -> void:
 	if not online_busy:
 		return
 	http.cancel_request()
+	auth_pending = false
+	guest_system = ""
+	guest_prompt = ""
 	online_busy = false
 	online_operation = ""
 	request_key = ""
@@ -303,13 +367,34 @@ func _cancel() -> void:
 func _online_completed(result: int, code: int, _headers: PackedStringArray, body: PackedByteArray) -> void:
 	if not online_busy:
 		return
+	if auth_pending:
+		auth_pending = false
+		if result == HTTPRequest.RESULT_SUCCESS and code == 200 and guest.accept_session(body.get_string_from_utf8()):
+			if online_operation == "test":
+				online_busy = false
+				online_operation = ""
+				connection.text = "Guest connected"
+				settings_status.text = "Guest session ready."
+				_update_buttons()
+			else:
+				_guest_http(guest.chat_request(robot_id, guest_system, guest_prompt))
+			return
+		online_busy = false
+		online_operation = ""
+		status.text = "Guest daily limit reached." if code == 429 else "Guest connection unavailable."
+		settings_status.text = status.text
+		_draw_history()
+		_update_buttons()
+		return
+	if not personal_mode.button_pressed and code == 401:
+		guest.id_token = ""
 	online_busy = false
 	var kind := online_operation
 	online_operation = ""
 	var parsed := Online.parse_response(result, code, body.get_string_from_utf8())
 	if parsed.get("ok", false):
 		verified = true
-		connection.text = "Connected"
+		connection.text = "Connected" if personal_mode.button_pressed else "Guest connected"
 		if kind == "test":
 			settings_status.text = "Connection test passed."
 		else:
@@ -323,7 +408,10 @@ func _online_completed(result: int, code: int, _headers: PackedStringArray, body
 	else:
 		verified = false
 		connection.text = "Not verified"
-		status.text = str(parsed.get("error", "OpenAI error."))
+		if personal_mode.button_pressed:
+			status.text = str(parsed.get("error", "OpenAI error."))
+		else:
+			status.text = "Daily guest AI limit reached. Try again tomorrow." if code == 429 else "Guest AI unavailable. Try again later."
 		settings_status.text = status.text
 	request_key = ""
 	_draw_history()
@@ -383,6 +471,7 @@ func _approve() -> void:
 
 func _update_buttons() -> void:
 	settings_button.disabled = online_busy
+	personal_mode.disabled = online_busy
 	model_editor.editable = not online_busy
 	key_editor.editable = not online_busy
 	share_context.disabled = online_busy
