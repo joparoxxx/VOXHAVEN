@@ -53,26 +53,29 @@ async function reserve(env,kind,uid,ip) {
   const hashedUID=uid ? await digest(uid) : "";
   const stub=env.QUOTA.get(env.QUOTA.idFromName("global-v1"));
   const lease=kind==="chat"?crypto.randomUUID():"";
+  const plan=quotaPlan(kind,hashedUID,hashedIP,env);
+  if(kind==="chat")plan.push(["chat:attempt:user:"+hashedUID,limit(env.DAILY_USER_ATTEMPTS,30,2000)]);
   const response=await stub.fetch("https://quota.internal/reserve",{method:"POST",body:JSON.stringify({
-    plan:quotaPlan(kind,hashedUID,hashedIP,env),kind,uid:hashedUID,lease,
+    plan,kind,uid:hashedUID,lease,
     cooldown:limit(env.CHAT_COOLDOWN_SECONDS,10,300),
     rpm:limit(env.GLOBAL_REQUESTS_PER_MINUTE,10,1000)
   })});
   if(response.status===429)return {ok:false,...await response.json()};
   if(response.status!==200)throw new Error("QUOTA_STORAGE_ERROR");
   const result=await response.json();
-  return {ok:true,remaining:result.remaining,cooldown:result.cooldown,stub,uid:hashedUID,lease};
+  return {ok:true,remaining:result.remaining,cooldown:result.cooldown,day:result.day,stub,uid:hashedUID,lease};
 }
 function quotaDenied(reservation) {
   const retry=Math.max(1,Math.ceil(reservation.retry_after||1));
   return Response.json({error:reservation.error||"DAILY_LIMIT",retry_after:retry},{status:429,headers:{"Cache-Control":"no-store","Retry-After":String(retry)}});
 }
-async function release(reservation) {
+async function release(reservation,success) {
   if(!reservation?.lease)return;
   try {
-    const response=await reservation.stub.fetch("https://quota.internal/release",{method:"POST",body:JSON.stringify({uid:reservation.uid,lease:reservation.lease,cooldown:reservation.cooldown})});
+    const response=await reservation.stub.fetch("https://quota.internal/release",{method:"POST",body:JSON.stringify({uid:reservation.uid,lease:reservation.lease,cooldown:reservation.cooldown,day:reservation.day,success})});
     if(!response.ok)console.warn("quota_release_failed");
-  } catch {console.warn("quota_release_failed");}
+    return response.ok;
+  } catch {console.warn("quota_release_failed");return false;}
 }
 export class Quota extends DurableObject {
   constructor(ctx,env) {
@@ -87,8 +90,17 @@ export class Quota extends DurableObject {
     const now=Date.now(), day=new Date(now).toISOString().slice(0,10);
     const sql=this.storage.sql;
     if(new URL(req.url).pathname==="/release"){
-      sql.exec("UPDATE chat_state SET lease='', until_ms=? WHERE uid=? AND lease=?",now+data.cooldown*1000,data.uid,data.lease);
-      return json({ok:true});
+      const finalized=this.storage.transactionSync(()=>{
+        const active=sql.exec("SELECT lease FROM chat_state WHERE uid=?",data.uid).toArray()[0];
+        if(!active||active.lease!==data.lease)return false;
+        // Refund only the player message reservation on failure. Global/IP/user attempt caps remain consumed.
+        if(data.success!==true)sql.exec("UPDATE usage SET n=MAX(0,n-1) WHERE day=? AND k=?",data.day,"chat:user:"+data.uid);
+        const metric=data.success===true?"chat:success":"chat:failed";
+        if(data.day===day)sql.exec("INSERT INTO usage(day,k,n) VALUES(?,?,1) ON CONFLICT(day,k) DO UPDATE SET n=n+1",day,metric);
+        sql.exec("UPDATE chat_state SET lease='', until_ms=? WHERE uid=? AND lease=?",now+data.cooldown*1000,data.uid,data.lease);
+        return true;
+      });
+      return json({ok:finalized},finalized?200:409);
     }
     const {plan,kind,uid,lease,cooldown,rpm}=data;
     const result=this.storage.transactionSync(()=>{
@@ -110,7 +122,7 @@ export class Quota extends DurableObject {
         sql.exec("INSERT INTO chat_rate(id,at_ms) VALUES(?,?)",lease,now);
       }
       for(const [k] of plan)sql.exec("INSERT INTO usage(day,k,n) VALUES(?,?,1) ON CONFLICT(day,k) DO UPDATE SET n=n+1",day,k);
-      return {ok:true,remaining,cooldown};
+      return {ok:true,remaining,cooldown,day};
     });
     return json(result,result.ok?200:429);
   }
@@ -194,7 +206,8 @@ export default {async fetch(req,env) {
   const ip=req.headers.get("CF-Connecting-IP");
   if(!ip)return error("NETWORK_UNAVAILABLE",503);
   let body;try{body=await bodyJson(req);}catch{return error("INVALID_BODY",400);}
-  let stage="QUOTA", reservation=null;
+  let stage="QUOTA", reservation=null, successful=false, chatResponse=null;
+  const finishChat=(result)=>{successful=result.ok;chatResponse=result;return result;};
   try {
     if(path!=="/chat"){
       const kind=path.slice(1);
@@ -215,9 +228,7 @@ export default {async fetch(req,env) {
     if(config.provider==="gemini"){
       stage="GEMINI";
       const result=await geminiChat(config,input);
-      result.headers.set("X-Cubyte-Cooldown",String(reservation.cooldown));
-      result.headers.set("X-Cubyte-Remaining",String(reservation.remaining));
-      return result;
+      return finishChat(result);
     }
     stage="OPENAI";
     const response=await fetch("https://api.openai.com/v1/chat/completions",{
@@ -240,22 +251,30 @@ export default {async fetch(req,env) {
         reason=({400:"BAD_REQUEST",401:"AUTH_FAILED",403:"ACCESS_DENIED",404:"NOT_FOUND",429:"RATE_OR_QUOTA"})[response.status]||reason;
       }
       console.warn("openai_status",response.status,reason);
-      return error("AI_"+reason,503);
+      return finishChat(error("AI_"+reason,503));
     }
     const data=await response.json();
     const reply=data?.choices?.[0]?.message?.content;
     if(typeof reply!=="string"||!reply.trim()){
       console.warn("openai_empty_completion");
-      return error("AI_EMPTY_RESPONSE",503);
+      return finishChat(error("AI_EMPTY_RESPONSE",503));
     }
-    if(reply.length>16384||reply.includes(env.OPENAI_API_KEY))return error("AI_RESPONSE_REJECTED",503);
+    if(reply.length>16384||reply.includes(env.OPENAI_API_KEY))return finishChat(error("AI_RESPONSE_REJECTED",503));
     const result=json({choices:[{message:{content:reply}}]});
-    result.headers.set("X-Cubyte-Cooldown",String(reservation.cooldown));
-    result.headers.set("X-Cubyte-Remaining",String(reservation.remaining));
-    return result;
+    return finishChat(result);
   } catch(e) {
     // Do not log error messages, request payloads, credentials, or tokens.
     console.warn("gateway_failure",stage,e instanceof TypeError?"TypeError":e instanceof Error?"Error":"Unknown");
-    return error(stage+"_UNAVAILABLE",503);
-  } finally {if(reservation?.ok)await release(reservation);}
+    const result=error(stage+"_UNAVAILABLE",503);
+    return reservation?.ok?finishChat(result):result;
+  } finally {
+    if(reservation?.ok){
+      const settled=await release(reservation,successful);
+      if(chatResponse){
+        chatResponse.headers.set("X-Cubyte-Cooldown",String(reservation.cooldown));
+        if(settled)chatResponse.headers.set("X-Cubyte-Remaining",String(reservation.remaining+(successful?0:1)));
+      }
+      console.info("chat_outcome",successful?"success":"failed",stage,chatResponse?.status||0,settled?"settled":"unsettled");
+    }
+  }
 }};
