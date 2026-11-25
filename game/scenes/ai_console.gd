@@ -19,6 +19,11 @@ var request_provider := ""
 var provider_waits := {}
 var request_prompt := ""
 var session_profiles := {}
+const Vault = preload("res://core/android_vault.gd")
+var vault = Vault.new()
+var save_key_button: Button
+var load_key_button: Button
+var forget_key_button: Button
 var personal_fields: VBoxContainer
 const Identity = preload("res://core/cubot_identity.gd")
 const UI = preload("res://ui/mobile_theme.gd")
@@ -204,6 +209,12 @@ func _ready() -> void:
 	key_editor.placeholder_text = "Paste API key"
 	key_editor.max_length = 4096
 	personal_fields.add_child(key_editor)
+	save_key_button = UI.button("Save encrypted key (Android)", _save_key)
+	load_key_button = UI.button("Load encrypted key", _load_key)
+	forget_key_button = UI.button("Forget saved key", _forget_key)
+	for button in [save_key_button, load_key_button, forget_key_button]:
+		personal_fields.add_child(button)
+		button.visible = vault.available()
 	var key_row := HBoxContainer.new()
 	fields.add_child(key_row)
 	test_button = UI.button("Test connection", _test_connection, true)
@@ -231,13 +242,14 @@ func _ready() -> void:
 	share_context.text = "Share saved history, notes and skills"
 	fields.add_child(share_context)
 	fields.add_child(UI.label("Allows sending this Cubot’s memory, skills and recent chat to the selected AI provider.", 16, UI.MUTED))
-	fields.add_child(UI.label("API keys remain in memory for this app session only. Use a restricted personal key; do not enter a shared production key. Cloud providers may charge or retain submitted content. Model tests can consume quota. Extra context is optional.", 16, UI.MUTED))
+	fields.add_child(UI.label("API keys stay in memory unless you explicitly save an encrypted Android key. The vault never writes a plaintext key. Use a restricted personal key; do not enter a shared production key. Cloud providers may charge or retain submitted content. Model tests can consume quota. Extra context is optional.", 16, UI.MUTED))
 	connection = UI.label("Not tested", 18)
 	fields.add_child(connection)
 	fields.add_child(UI.label("Chat history is saved locally on this device (last 12 exchanges per Cubot). Enable sharing saved history only if you want to send previous sessions and private notes to the AI provider. Avoid entering sensitive information.", 16, UI.MUTED))
 	clear_history_button = UI.button("Clear this Cubot’s history", _confirm_clear_history)
 	fields.add_child(clear_history_button)
 	clear_history_confirm = ConfirmationDialog.new()
+	UI.configure_modal(clear_history_confirm)
 	clear_history_confirm.title = "Clear chat history?"
 	clear_history_confirm.confirmed.connect(_clear_history)
 	add_child(clear_history_confirm)
@@ -569,7 +581,7 @@ func _confirm_clear_history() -> void:
 	if online_busy or robot_id.is_empty():
 		return
 	clear_history_confirm.dialog_text = "Delete saved conversation with " + robot_id.to_upper() + " on this device? Profile notes and skills are not affected."
-	clear_history_confirm.popup_centered()
+	UI.show_modal(clear_history_confirm, 0.7)
 
 func _clear_history() -> void:
 	if online_busy or robot_id.is_empty():
@@ -640,6 +652,8 @@ func _update_buttons() -> void:
 	include_recent.disabled = online_busy
 	fallback_mode.disabled = online_busy or local_ai.busy
 	clear_key_button.disabled = online_busy
+	for button in [save_key_button, load_key_button, forget_key_button]:
+		button.disabled = online_busy or active_provider == "offline"
 	clear_history_button.disabled = online_busy or robot_id.is_empty()
 	back_button.disabled = online_busy
 	prompt_box.editable = not online_busy
@@ -717,3 +731,43 @@ func team_credentials() -> Dictionary:
 		return {"key": key_editor.text.strip_edges(), "model": model_editor.text.strip_edges()}
 	var saved: Dictionary = session_profiles.get("gemini", {})
 	return {"key": str(saved.get("key", "")).strip_edges(), "model": str(saved.get("model", "")).strip_edges()}
+
+func _save_key() -> void:
+	if online_busy or active_provider == "offline":
+		return
+	var key := key_editor.text.strip_edges()
+	var model := model_editor.text.strip_edges()
+	if Online.make_request(active_provider, model, key, "test", "test").is_empty():
+		settings_status.text = "Enter valid model and key first."
+		return
+	settings_status.text = "Encrypted credential saved." if vault.save(active_provider, key, model) else "Android secure storage unavailable. Key remains session-only."
+
+func _load_key() -> void:
+	if online_busy or active_provider == "offline":
+		return
+	var saved: Dictionary = vault.load_saved(active_provider)
+	if saved.is_empty():
+		settings_status.text = "No readable encrypted credential."
+		return
+	key_editor.text = saved["key"]
+	model_editor.text = saved["model"]
+	session_profiles[active_provider] = saved.duplicate()
+	_credentials_changed("")
+	settings_status.text = "Encrypted credential loaded. Test connection to verify."
+
+func _forget_key() -> void:
+	if online_busy or active_provider == "offline":
+		return
+	var ok: bool = vault.forget(active_provider)
+	_clear_key()
+	settings_status.text = "Saved credential forgotten." if ok else "Could not confirm vault deletion. Session key cleared."
+
+func handle_back() -> void:
+	if online_busy:
+		_cancel()
+	elif clear_history_confirm.visible:
+		clear_history_confirm.hide()
+	elif settings_page.visible and not robot_id.is_empty():
+		_show_chat()
+	else:
+		hide()
