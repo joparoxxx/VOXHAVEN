@@ -1,9 +1,5 @@
-# CUBYTE v0.5 — OpenAI and Cubot chat
+# CUBYTE AI access
 
-One shared OpenAI API key and model ID for all Cubots. The mobile office has top status and settings, bottom Cubot selection and Chat/Profile/Skills, and a collapsible local tools panel. Tap near a visible Cubot in the 3D office to select it, or use its named button. Chat and settings are separate pages. Chat is isolated by Cubot ID, with up to twelve recent turns per Cubot in this app session.
+See [Guest AI setup](GUEST_AI.md) for the current v0.6 guest-first development configuration. Guest AI is not deployed yet; the optional personal OpenAI key remains session-only. Previous GGUF native source is preserved but inactive. Local tools work without internet. Portrait office selection starts empty, tapping a Cubot reveals Chat/Profile/Skills and tapping empty space deselects. 
 
-Enter a newly generated key in AI settings, then Test connection. No key is included in the public repository, APK, or persistent file; the field is masked and shared across Cubots for this session. Do not paste keys into prompts or imported skills. The model ID is user-configurable. A test request may consume quota. Nothing is sent until a user requests it. Extra profile notes, edited personality, skill text and recent chat are opt-in; fixed Cubot identity and team metadata are included in the system prompt. Connection test does not send private robot context. OpenAI is the only active AI endpoint. Local TXT and sample PNG tools still work without internet.
-
-AI tool proposals require explicit Approve or Reject. Permission is checked again before local execution. No arbitrary scripts or automatic task execution. Conversation history is not saved permanently. Android Keystore integration remains deferred. Previous GGUF native source is preserved for possible future work but not included in the v0.5 app or normal CI.
-
-The latest UI and identity changes are intentionally committed with skip-ci markers at the user's request. A future explicitly authorized build must verify compilation, policy tests, scene smoke and APK packaging. Mobile layout and live OpenAI identity behavior require device testing. Debug signing is ephemeral; back up important app data before replacing APKs.
+No new GitHub Actions run has been requested. Device and live gateway verification remain pending.
