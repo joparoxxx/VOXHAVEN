@@ -3,6 +3,8 @@ const TaskEngine = preload("res://core/task_engine.gd")
 const Skills = preload("res://core/skill_registry.gd")
 const Roster = preload("res://core/robot_roster.gd")
 const AIConsole = preload("res://scenes/ai_console.gd")
+const TeamChat = preload("res://scenes/team_chat.gd")
+var team_chat: Window
 const UI = preload("res://ui/mobile_theme.gd")
 var ai_console
 var roster = Roster.new()
@@ -188,6 +190,11 @@ func _build_ui() -> void:
 	status = UI.label("Tap a Cubot to select.", 16, UI.MUTED)
 	status.max_lines_visible = 2
 	top_column.add_child(status)
+	var workspace_row := HBoxContainer.new()
+	top_column.add_child(workspace_row)
+	var team_button := UI.button("Team Chat", _show_team, true)
+	team_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	workspace_row.add_child(team_button)
 
 	var bottom := PanelContainer.new()
 	cubot_actions = bottom
@@ -254,6 +261,9 @@ func _build_ui() -> void:
 	ai_console.visible = false
 	add_child(ai_console)
 	ai_console.proposal_approved.connect(_ai_task)
+	team_chat = TeamChat.new()
+	team_chat.hide()
+	add_child(team_chat)
 	_build_skill_dialog()
 	_build_robot_dialog()
 	_select_cubot(-1)
@@ -626,3 +636,7 @@ func _ai_task(robot_id: String, tool: String, payload: String, worker_id: String
 		return
 	_select_cubot(index)
 	_queue(tool, payload, robot_id if worker_id != robot_id else "")
+
+func _show_team() -> void:
+	if not busy and not ai_console.online_busy:
+		team_chat.call("show_team", ai_console)
