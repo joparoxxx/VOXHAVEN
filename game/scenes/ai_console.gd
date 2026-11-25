@@ -44,7 +44,7 @@ func configure(roster_: Object, skills_: Object) -> void:
 
 func _ready() -> void:
 	title = "CUBYTE | Cubot chat"
-	size = Vector2i(860, 490)
+	size = Vector2i(450, 880)
 	transient = true
 	exclusive = true
 	close_requested.connect(hide)
@@ -65,7 +65,7 @@ func _ready() -> void:
 	identity_column.add_child(heading)
 	subtitle = UI.label("OpenAI", 17, UI.MUTED)
 	identity_column.add_child(subtitle)
-	settings_button = UI.button("AI settings", _show_settings)
+	settings_button = UI.button("Settings", _show_settings)
 	header.add_child(settings_button)
 	header.add_child(UI.button("Close", hide))
 	chat_page = VBoxContainer.new()
@@ -102,7 +102,7 @@ func _ready() -> void:
 	prompt_box = TextEdit.new()
 	prompt_box.placeholder_text = "Message this Cubot..."
 	prompt_box.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
-	prompt_box.custom_minimum_size.y = 68
+	prompt_box.custom_minimum_size.y = 92
 	prompt_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	composer.add_child(prompt_box)
 	ask_button = UI.button("Send", _ask, true)
@@ -125,15 +125,15 @@ func _ready() -> void:
 	fields.add_child(UI.label("One API key and model for all Cubots.", 17, UI.MUTED))
 	fields.add_child(UI.label("Model ID", 17))
 	model_editor = LineEdit.new()
-	model_editor.custom_minimum_size.y = 48
-	model_editor.placeholder_text = "Enter your working OpenAI model ID"
+	model_editor.custom_minimum_size.y = 60
+	model_editor.placeholder_text = "OpenAI model ID"
 	model_editor.max_length = 200
 	fields.add_child(model_editor)
 	fields.add_child(UI.label("API key", 17))
 	key_editor = LineEdit.new()
 	key_editor.secret = true
-	key_editor.custom_minimum_size.y = 48
-	key_editor.placeholder_text = "Paste your new key (session only)"
+	key_editor.custom_minimum_size.y = 60
+	key_editor.placeholder_text = "Paste API key"
 	key_editor.max_length = 4096
 	fields.add_child(key_editor)
 	var key_row := HBoxContainer.new()
@@ -144,9 +144,10 @@ func _ready() -> void:
 	clear_key_button = UI.button("Clear key", _clear_key)
 	key_row.add_child(clear_key_button)
 	share_context = CheckBox.new()
-	share_context.custom_minimum_size.y = 48
-	share_context.text = "Share memory, skills and recent chat with OpenAI"
+	share_context.custom_minimum_size.y = 60
+	share_context.text = "Share extra context"
 	fields.add_child(share_context)
+	fields.add_child(UI.label("Allows sending this Cubot’s memory, skills and recent chat to OpenAI.", 16, UI.MUTED))
 	fields.add_child(UI.label("Messages go to OpenAI. Extra context is optional. Requests may use paid API credits. The key is not saved to disk.", 16, UI.MUTED))
 	connection = UI.label("Not tested", 18)
 	fields.add_child(connection)
