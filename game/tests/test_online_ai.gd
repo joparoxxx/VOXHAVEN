@@ -48,6 +48,15 @@ func _initialize() -> void:
 	check(atlas.contains("Your name is ATLAS") and atlas.contains("Manager"), "atlas identity")
 	check(pixel.contains("Your name is PIXEL") and pixel.contains("Designer"), "pixel identity")
 	check(atlas.contains("CUBYTE is the platform, not your name"), "platform distinction")
+	for id in ["atlas", "pixel", "mesh"]:
+		var identity := Identity.system_prompt(id, ["text"], {})
+		check(identity.begins_with("Your name is " + id.to_upper() + "."), "selected Cubot identity")
+		check(identity.contains("Identity is background context, not a script to recite."), "implicit identity")
+		check(identity.contains("Do not introduce yourself"), "no repeated introductions")
+		check(identity.contains("Only identify yourself if the player explicitly asks"), "identity on request")
+		check(identity.contains("Answer the player's actual message directly and naturally"), "natural conversation")
+		check(identity.contains("Tools require player approval"), "tool approval remains enforced")
+
 	check(Identity.system_prompt("unknown", [], {}).is_empty(), "unknown identity rejected")
 	check(not Identity.system_prompt("mesh", [], {}).contains("private-note"), "no private context by default")
 	check(Identity.system_prompt("mesh", [], {"memory":"private-note"}).contains("private-note"), "explicit shared context")
