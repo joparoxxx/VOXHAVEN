@@ -12,6 +12,12 @@ var team_chat: Window
 var team_task_id := ""
 const Workspace = preload("res://scenes/workspace.gd")
 var workspace: Window
+const Company = preload("res://core/company.gd")
+const CompanyHQ = preload("res://scenes/company_hq.gd")
+var company = Company.new()
+var company_hq: Window
+var company_label: Label
+var decorations: Node3D
 const UI = preload("res://ui/mobile_theme.gd")
 var ai_console
 var roster = Roster.new()
@@ -144,6 +150,9 @@ func _build_office() -> void:
 		_build_robot(Vector3(x, 0, 0.5), ROBOT_COLORS[i])
 	_box(self, Vector3(1.8, 0.15, 1.3), Vector3(3.5, 0.08, 2.4), Color("#4a6b72"))
 	_restore_layout()
+	decorations = Node3D.new()
+	add_child(decorations)
+	_refresh_decorations()
 	_rebuild_navigation()
 
 func _build_robot(position_: Vector3, color: Color) -> void:
@@ -240,6 +249,13 @@ func _build_ui() -> void:
 	workspace_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	workspace_row.add_child(workspace_button)
 	workspace_row.add_child(UI.button("Build", _show_build))
+	var company_row := HBoxContainer.new()
+	top_column.add_child(company_row)
+	company_label = UI.label("", 16, UI.MUTED)
+	company_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	company_row.add_child(company_label)
+	company_row.add_child(UI.button("Company", _show_company))
+	_refresh_company_label()
 
 	var bottom := PanelContainer.new()
 	cubot_actions = bottom
@@ -324,6 +340,10 @@ func _build_ui() -> void:
 	workspace.hide()
 	add_child(workspace)
 	workspace.connect("run_requested", _run_queued)
+	company_hq = CompanyHQ.new()
+	company_hq.hide()
+	add_child(company_hq)
+	company_hq.connect("changed", _company_changed)
 	_build_skill_dialog()
 	_build_robot_dialog()
 	_build_layout_dialog()
@@ -486,7 +506,10 @@ func _process(delta: float) -> void:
 		cancel_button.disabled = true
 		var current := pending_id
 		engine.run_task(current)
-		var succeeded: bool = engine.get_task(current).get("status") == "succeeded"
+		var completed: Dictionary = engine.get_task(current)
+		var succeeded: bool = completed.get("status") == "succeeded"
+		if succeeded and company.reward(completed):
+			_refresh_company_label()
 		_reset()
 		if succeeded and not workflow_queue.is_empty():
 			pending_id = workflow_queue.pop_front()
@@ -1044,6 +1067,8 @@ func _notification(what: int) -> void:
 			confirm.hide()
 		else:
 			workspace.hide()
+	elif is_instance_valid(company_hq) and company_hq.visible:
+		company_hq.hide()
 	elif is_instance_valid(build_dialog) and build_dialog.visible:
 		build_dialog.hide()
 	elif skill_dialog.visible:
@@ -1078,3 +1103,35 @@ func _team_task(robot_id: String, tool: String, payload: String, worker_id: Stri
 	_ai_task(robot_id, tool, payload, worker_id)
 	if not pending_id.is_empty() and pending_id != previous:
 		team_task_id = pending_id
+
+func _refresh_company_label() -> void:
+	if is_instance_valid(company_label):
+		var data: Dictionary = company.snapshot()
+		company_label.text = str(data["company"]) + " · " + str(int(data["credits"])) + " credits"
+
+func _show_company() -> void:
+	if not busy and not ai_console.online_busy:
+		company_hq.call("show_company", company)
+
+func _company_changed() -> void:
+	_refresh_company_label()
+	_refresh_decorations()
+	_rebuild_navigation()
+
+func _refresh_decorations() -> void:
+	if not is_instance_valid(decorations):
+		return
+	for child in decorations.get_children():
+		decorations.remove_child(child)
+		child.queue_free()
+	var upgrades: Array = company.snapshot()["upgrades"]
+	if "plant" in upgrades:
+		_box(decorations, Vector3(0.45, 0.45, 0.45), Vector3(-4.3, 0.225, -3.35), Color("#ad7952"))
+		_box(decorations, Vector3(0.65, 0.65, 0.65), Vector3(-4.3, 0.75, -3.35), Color("#468b58"))
+	if "lounge" in upgrades:
+		_box(decorations, Vector3(1.2, 0.4, 0.8), Vector3(3.5, 0.35, 2.4), Color("#527d82"))
+		_box(decorations, Vector3(1.2, 0.65, 0.18), Vector3(3.5, 0.65, 2.75), Color("#36585d"))
+	if "lamp" in upgrades:
+		_box(decorations, Vector3(0.2, 0.2, 0.2), Vector3(4.3, 0.1, -3.3), Color("#586475"))
+		_box(decorations, Vector3(0.08, 1.5, 0.08), Vector3(4.3, 0.85, -3.3), Color("#738297"))
+		_box(decorations, Vector3(0.4, 0.18, 0.4), Vector3(4.3, 1.7, -3.3), Color("#f5d998"))
