@@ -320,19 +320,29 @@ func delete_artifact(id: String) -> bool:
 # Atomically enqueue a user-approved native workflow. All permissions and payloads
 # must pass before allocating any task. The runner stops on the first failure.
 func enqueue_workflow(robot_id: String, steps: Array) -> Array[String]:
+	var assigned: Array = []
+	for step in steps:
+		if not step is Dictionary:
+			return []
+		var entry: Dictionary = step.duplicate()
+		entry["robot_id"] = robot_id
+		assigned.append(entry)
+	return enqueue_team_workflow(assigned)
+
+func enqueue_team_workflow(steps: Array) -> Array[String]:
 	var ids: Array[String] = []
-	if not _ready or robot_id not in ["atlas", "pixel", "mesh"] or steps.is_empty() or steps.size() > 8:
+	if not _ready or steps.is_empty() or steps.size() > 8 or _next_id + steps.size() >= 1000000:
 		return ids
 	for step in steps:
-		if not step is Dictionary or not step.get("tool") is String or not step.get("payload") is String:
+		if not step is Dictionary or not step.get("tool") is String or not step.get("payload") is String or step.get("robot_id") not in ["atlas", "pixel", "mesh"]:
 			return ids
-		if not _allowed(robot_id, step["tool"]) or not Writer.valid(step["tool"], step["payload"]):
+		if not _allowed(step["robot_id"], step["tool"]) or not Writer.valid(step["tool"], step["payload"]):
 			return ids
 	var previous := _next_id
 	for step in steps:
 		var id := str(_next_id)
 		_next_id += 1
-		_tasks[id] = {"id": id, "robot_id": robot_id, "requested_by": "", "tool": step["tool"], "payload": step["payload"], "status": "queued", "artifact": "", "error": "", "workflow": str(previous)}
+		_tasks[id] = {"id": id, "robot_id": step["robot_id"], "requested_by": "", "tool": step["tool"], "payload": step["payload"], "status": "queued", "artifact": "", "error": "", "workflow": str(previous)}
 		ids.append(id)
 	if not _save():
 		for id in ids:
