@@ -1,6 +1,6 @@
 extends RefCounted
 ## Local-only bounded conversation history. No network calls.
-const IDS := ["atlas", "pixel", "mesh"]
+const IDS := ["atlas", "pixel", "mesh", "nova"]
 const MAX_TURNS := 12
 const MAX_FILE_BYTES := 524288
 const Snapshot = preload("res://core/snapshot_store.gd")
