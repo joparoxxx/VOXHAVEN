@@ -1,5 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
-import { claimsValid, chatInput, quotaPlan } from "./policy.mjs";
+import { claimsValid, chatInput, quotaPlan, limit } from "./policy.mjs";
 
 const JWKS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
 let keyCache = { expires: 0, keys: [] };
@@ -52,30 +52,67 @@ async function reserve(env,kind,uid,ip) {
   const hashedIP=await digest(ip);
   const hashedUID=uid ? await digest(uid) : "";
   const stub=env.QUOTA.get(env.QUOTA.idFromName("global-v1"));
-  const response=await stub.fetch("https://quota.internal/reserve",{method:"POST",body:JSON.stringify({plan:quotaPlan(kind,hashedUID,hashedIP,env)})});
-  if(response.status===200)return true;
-  if(response.status===429)return false;
-  throw new Error("QUOTA_STORAGE_ERROR");
+  const lease=kind==="chat"?crypto.randomUUID():"";
+  const response=await stub.fetch("https://quota.internal/reserve",{method:"POST",body:JSON.stringify({
+    plan:quotaPlan(kind,hashedUID,hashedIP,env),kind,uid:hashedUID,lease,
+    cooldown:limit(env.CHAT_COOLDOWN_SECONDS,10,300),
+    rpm:limit(env.GLOBAL_REQUESTS_PER_MINUTE,10,1000)
+  })});
+  if(response.status===429)return {ok:false,...await response.json()};
+  if(response.status!==200)throw new Error("QUOTA_STORAGE_ERROR");
+  const result=await response.json();
+  return {ok:true,remaining:result.remaining,cooldown:result.cooldown,stub,uid:hashedUID,lease};
+}
+function quotaDenied(reservation) {
+  const retry=Math.max(1,Math.ceil(reservation.retry_after||1));
+  return Response.json({error:reservation.error||"DAILY_LIMIT",retry_after:retry},{status:429,headers:{"Cache-Control":"no-store","Retry-After":String(retry)}});
+}
+async function release(reservation) {
+  if(!reservation?.lease)return;
+  try {
+    const response=await reservation.stub.fetch("https://quota.internal/release",{method:"POST",body:JSON.stringify({uid:reservation.uid,lease:reservation.lease,cooldown:reservation.cooldown})});
+    if(!response.ok)console.warn("quota_release_failed");
+  } catch {console.warn("quota_release_failed");}
 }
 export class Quota extends DurableObject {
   constructor(ctx,env) {
     super(ctx,env); this.storage=ctx.storage;
     this.storage.sql.exec("CREATE TABLE IF NOT EXISTS usage(day TEXT, k TEXT, n INTEGER NOT NULL, PRIMARY KEY(day,k))");
+    this.storage.sql.exec("CREATE TABLE IF NOT EXISTS chat_state(uid TEXT PRIMARY KEY, lease TEXT NOT NULL, until_ms INTEGER NOT NULL)");
+    this.storage.sql.exec("CREATE TABLE IF NOT EXISTS chat_rate(id TEXT PRIMARY KEY, at_ms INTEGER NOT NULL)");
+    this.storage.sql.exec("CREATE INDEX IF NOT EXISTS chat_rate_at ON chat_rate(at_ms)");
   }
   async fetch(req) {
-    const {plan}=await req.json();
-    const day=new Date().toISOString().slice(0,10);
-    // No network await inside transaction. All users share one global cap.
-    const ok=this.storage.transactionSync(()=>{
-      this.storage.sql.exec("DELETE FROM usage WHERE day <> ?",day);
+    const data=await req.json();
+    const now=Date.now(), day=new Date(now).toISOString().slice(0,10);
+    const sql=this.storage.sql;
+    if(new URL(req.url).pathname==="/release"){
+      sql.exec("UPDATE chat_state SET lease='', until_ms=? WHERE uid=? AND lease=?",now+data.cooldown*1000,data.uid,data.lease);
+      return json({ok:true});
+    }
+    const {plan,kind,uid,lease,cooldown,rpm}=data;
+    const result=this.storage.transactionSync(()=>{
+      sql.exec("DELETE FROM usage WHERE day <> ?",day);
+      sql.exec("DELETE FROM chat_state WHERE until_ms <= ?",now);
+      sql.exec("DELETE FROM chat_rate WHERE at_ms <= ?",now-60000);
+      let remaining=0;
       for(const [k,max] of plan){
-        const current=this.storage.sql.exec("SELECT n FROM usage WHERE day=? AND k=?",day,k).toArray()[0]?.n||0;
-        if(current>=max)return false;
+        const current=sql.exec("SELECT n FROM usage WHERE day=? AND k=?",day,k).toArray()[0]?.n||0;
+        if(current>=max)return {ok:false,error:"DAILY_LIMIT",retry_after:Math.ceil((Date.parse(day+"T00:00:00Z")+86400000-now)/1000)};
+        if(kind==="chat"&&k==="chat:user:"+uid)remaining=max-current-1;
       }
-      for(const [k] of plan)this.storage.sql.exec("INSERT INTO usage(day,k,n) VALUES(?,?,1) ON CONFLICT(day,k) DO UPDATE SET n=n+1",day,k);
-      return true;
+      if(kind==="chat"){
+        const active=sql.exec("SELECT lease, until_ms FROM chat_state WHERE uid=?",uid).toArray()[0];
+        if(active)return {ok:false,error:active.lease?"CHAT_IN_PROGRESS":"CHAT_COOLDOWN",retry_after:active.lease?2:Math.ceil((active.until_ms-now)/1000)};
+        const rate=sql.exec("SELECT COUNT(*) AS n, MIN(at_ms) AS oldest FROM chat_rate").toArray()[0];
+        if(rate.n>=rpm)return {ok:false,error:"GLOBAL_RATE_LIMIT",retry_after:rpm===0?60:Math.max(1,Math.ceil((rate.oldest+60000-now)/1000))};
+        sql.exec("INSERT INTO chat_state(uid,lease,until_ms) VALUES(?,?,?)",uid,lease,now+120000);
+        sql.exec("INSERT INTO chat_rate(id,at_ms) VALUES(?,?)",lease,now);
+      }
+      for(const [k] of plan)sql.exec("INSERT INTO usage(day,k,n) VALUES(?,?,1) ON CONFLICT(day,k) DO UPDATE SET n=n+1",day,k);
+      return {ok:true,remaining,cooldown};
     });
-    return json({ok},ok?200:429);
+    return json(result,result.ok?200:429);
   }
 }
 async function firebase(env,kind,body) {
@@ -157,11 +194,12 @@ export default {async fetch(req,env) {
   const ip=req.headers.get("CF-Connecting-IP");
   if(!ip)return error("NETWORK_UNAVAILABLE",503);
   let body;try{body=await bodyJson(req);}catch{return error("INVALID_BODY",400);}
-  let stage="QUOTA";
+  let stage="QUOTA", reservation=null;
   try {
     if(path!=="/chat"){
       const kind=path.slice(1);
-      if(!await reserve(env,kind,"",ip))return error("DAILY_LIMIT",429);
+      const authQuota=await reserve(env,kind,"",ip);
+      if(!authQuota.ok)return quotaDenied(authQuota);
       stage="FIREBASE";
       return await firebase(env,kind,body);
     }
@@ -172,10 +210,14 @@ export default {async fetch(req,env) {
     const input=chatInput(body);
     if(!input)return error("INVALID_MESSAGE",400);
     stage="QUOTA";
-    if(!await reserve(env,"chat",uid,ip))return error("DAILY_LIMIT",429);
+    reservation=await reserve(env,"chat",uid,ip);
+    if(!reservation.ok)return quotaDenied(reservation);
     if(config.provider==="gemini"){
       stage="GEMINI";
-      return await geminiChat(config,input);
+      const result=await geminiChat(config,input);
+      result.headers.set("X-Cubyte-Cooldown",String(reservation.cooldown));
+      result.headers.set("X-Cubyte-Remaining",String(reservation.remaining));
+      return result;
     }
     stage="OPENAI";
     const response=await fetch("https://api.openai.com/v1/chat/completions",{
@@ -207,10 +249,13 @@ export default {async fetch(req,env) {
       return error("AI_EMPTY_RESPONSE",503);
     }
     if(reply.length>16384||reply.includes(env.OPENAI_API_KEY))return error("AI_RESPONSE_REJECTED",503);
-    return json({choices:[{message:{content:reply}}]});
+    const result=json({choices:[{message:{content:reply}}]});
+    result.headers.set("X-Cubyte-Cooldown",String(reservation.cooldown));
+    result.headers.set("X-Cubyte-Remaining",String(reservation.remaining));
+    return result;
   } catch(e) {
     // Do not log error messages, request payloads, credentials, or tokens.
     console.warn("gateway_failure",stage,e instanceof TypeError?"TypeError":e instanceof Error?"Error":"Unknown");
     return error(stage+"_UNAVAILABLE",503);
-  }
+  } finally {if(reservation?.ok)await release(reservation);}
 }};
