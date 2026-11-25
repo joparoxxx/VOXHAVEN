@@ -11,6 +11,18 @@ if [ ! -d deps/llama.cpp/.git ]; then
 fi
 git -C deps/godot-cpp rev-parse HEAD
 git -C deps/llama.cpp rev-parse HEAD
+# Pin and verify the official SQLite amalgamation before compiling it.
+sqlite_archive="deps/sqlite-amalgamation-3530400.zip"
+if [ ! -f "$sqlite_archive" ]; then
+  curl --fail --location --retry 3 -o "$sqlite_archive.tmp" https://sqlite.org/2026/sqlite-amalgamation-3530400.zip
+  mv "$sqlite_archive.tmp" "$sqlite_archive"
+fi
+python3 - "$sqlite_archive" <<'PY'
+import hashlib, sys
+with open(sys.argv[1], "rb") as f:
+    assert hashlib.sha3_256(f.read()).hexdigest() == "628a44cfe82c66aed1ccbbe85a562d2e33ebe64b3288981ed76285612227934e", "SQLite archive checksum mismatch"
+PY
+unzip -oq "$sqlite_archive" -d deps
 args=(-DCMAKE_BUILD_TYPE=Release)
 case "$target" in
   android)
