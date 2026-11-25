@@ -48,7 +48,8 @@ func _ready() -> void:
 	margin.add_child(column)
 	column.add_child(UI.label("Team Chat", 24))
 	column.add_child(UI.label("Gemini · One request per selected Cubot (up to 4 per message). Group messages are shared with selected participants. Private chats are not included.", 16, UI.MUTED))
-	var row := HBoxContainer.new()
+	var row := GridContainer.new()
+	row.columns = 2
 	column.add_child(row)
 	for id in IDS:
 		var check := CheckBox.new()
