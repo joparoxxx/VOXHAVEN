@@ -1,19 +1,21 @@
 extends RefCounted
 const Bus = preload("res://core/event_bus.gd")
 ## Local profiles and explicit permissions. No model inference.
-const IDS := ["atlas", "pixel", "mesh"]
+const IDS := ["atlas", "pixel", "mesh", "nova"]
 const ToolRegistry = preload("res://core/tool_registry.gd")
 const TOOLS = ToolRegistry.IDS
 const DEFAULTS := {
 	"atlas": {"role": "Manager", "personality": "Organized", "specialization": "Coordination"},
 	"pixel": {"role": "Designer", "personality": "Creative", "specialization": "PNG"},
-	"mesh": {"role": "3D Artist", "personality": "Methodical", "specialization": "Geometry (future)"}
+	"mesh": {"role": "3D Artist", "personality": "Methodical", "specialization": "Geometry (future)"},
+	"nova": {"role": "Analyst", "personality": "Precise", "specialization": "Reports and structured data"}
 }
 const Snapshot = preload("res://core/snapshot_store.gd")
 var _storage
 var _root: String
 var _profiles := {}
 var _ready := false
+var _nova_unlocked := false
 
 func _init(root: String = "user://cubyte/robots") -> void:
 	_root = root
@@ -61,10 +63,10 @@ func set_permission(id: String, tool: String, allowed: bool) -> bool:
 	return _set_profile_field(id, "permissions", permissions)
 
 func can_use(id: String, tool: String) -> bool:
-	return _ready and _profiles.has(id) and tool in TOOLS and _profiles[id]["permissions"].get(tool, false) == true
+	return _ready and is_active(id) and _profiles.has(id) and tool in TOOLS and _profiles[id]["permissions"].get(tool, false) == true
 
 func delegate(tool: String) -> String:
-	var candidates := ["pixel", "mesh"] if tool in ["png", "svg"] else ["mesh", "pixel"]
+	var candidates := ["pixel", "mesh"] if tool in ["png", "svg"] else (["nova", "mesh", "pixel"] if tool in ["csv", "xlsx", "json", "pdf", "docx"] else ["mesh", "pixel"])
 	for id in candidates:
 		if can_use(id, tool):
 			return id
@@ -95,6 +97,9 @@ func _load() -> bool:
 	var validated := {}
 	for id in IDS:
 		var p: Variant = saved.get(id)
+		if id == "nova" and not saved.has(id):
+			validated[id] = _profiles[id].duplicate(true)
+			continue
 		if not p is Dictionary or not p.get("memory") is String or not p.get("personality") is String or not p.get("permissions") is Dictionary:
 			return false
 		if p["memory"].to_utf8_buffer().size() > 4096 or p["personality"].strip_edges().is_empty() or p["personality"].to_utf8_buffer().size() > 128:
@@ -111,3 +116,16 @@ func _load() -> bool:
 		validated[id] = profile
 	_profiles = validated
 	return true
+
+func set_nova_unlocked(value: bool) -> void:
+	_nova_unlocked = value
+
+func is_active(id: String) -> bool:
+	return id in IDS and (id != "nova" or _nova_unlocked)
+
+func active_ids() -> Array[String]:
+	var result: Array[String] = []
+	for id in IDS:
+		if is_active(id):
+			result.append(id)
+	return result
