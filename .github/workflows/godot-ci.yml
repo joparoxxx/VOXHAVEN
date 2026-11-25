@@ -91,6 +91,12 @@ jobs:
         run: |
           node --check backend/src/index.mjs
           node --test backend/tests/*.test.mjs
+      - name: Workspace and artifact regression tests
+        run: |
+          set -o pipefail
+          timeout 120s Godot_v4.4.1-stable_linux.x86_64 --headless --path game --script res://tests/test_workspace.gd 2>&1 | tee /tmp/workspace.log
+          if grep -E 'SCRIPT ERROR|ERROR: Failed to load script' /tmp/workspace.log; then exit 1; fi
+          grep -Fx 'CUBYTE workspace tests: 0 failures' /tmp/workspace.log
       - name: Scene smoke
         run: |
           set -o pipefail
