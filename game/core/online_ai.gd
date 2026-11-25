@@ -25,7 +25,19 @@ static func models_request(provider: String, key: String) -> Dictionary:
 		return {}
 	return {"url": str(BASE[provider]) + "/models" + ("?pageSize=100" if provider == "gemini" else ""), "headers": headers}
 
-static func make_request(provider: String, model: String, key: String, system: String, prompt: String) -> Dictionary:
+# Bounded complete exchanges only; never promote prior messages to system instructions.
+static func conversation_turns(history: Array) -> Array:
+	var turns: Array = []
+	for item in history.slice(maxi(0, history.size() - 3)):
+		if not item is Dictionary or not item.get("user") is String or not item.get("assistant") is String:
+			continue
+		var user: String = str(item["user"]).left(500).strip_edges()
+		var answer: String = str(item["assistant"]).left(800).strip_edges()
+		if not user.is_empty() and not answer.is_empty():
+			turns.append({"user": user, "assistant": answer})
+	return turns
+
+static func make_request(provider: String, model: String, key: String, system: String, prompt: String, history: Array = []) -> Dictionary:
 	model = model.strip_edges()
 	var headers := _headers(provider, key)
 	if headers.is_empty() or model.is_empty() or model.length() > 200:
@@ -33,7 +45,13 @@ static func make_request(provider: String, model: String, key: String, system: S
 	if system.to_utf8_buffer().size() > 32768 or prompt.to_utf8_buffer().size() > 2048:
 		return {}
 	var url: String = str(BASE[provider]) + "/chat/completions"
-	var body := {"model": model, "messages": [{"role": "system", "content": system}, {"role": "user", "content": prompt}], "stream": false}
+	var turns := conversation_turns(history)
+	var messages: Array = [{"role": "system", "content": system}]
+	for turn in turns:
+		messages.append({"role": "user", "content": turn["user"]})
+		messages.append({"role": "assistant", "content": turn["assistant"]})
+	messages.append({"role": "user", "content": prompt})
+	var body := {"model": model, "messages": messages, "stream": false}
 	if provider == "gemini":
 		model = model.trim_prefix("models/")
 		for ch in model:
@@ -42,8 +60,13 @@ static func make_request(provider: String, model: String, key: String, system: S
 		if model.is_empty() or not model.begins_with("gemini-"):
 			return {}
 		url = str(BASE[provider]) + "/models/" + model + ":generateContent"
-		body = {"systemInstruction": {"parts": [{"text": system}]}, "contents": [{"role": "user", "parts": [{"text": prompt}]}], "generationConfig": {"maxOutputTokens": 1024}}
-	elif provider in ["openai", "groq"]:
+		var contents: Array = []
+		for turn in turns:
+			contents.append({"role": "user", "parts": [{"text": turn["user"]}]})
+			contents.append({"role": "model", "parts": [{"text": turn["assistant"]}]})
+		contents.append({"role": "user", "parts": [{"text": prompt}]})
+		body = {"systemInstruction": {"parts": [{"text": system}]}, "contents": contents, "generationConfig": {"maxOutputTokens": 1024}}
+	elif provider in ["openai", "groq", "openrouter"]:
 		body["max_completion_tokens"] = 1024
 	else:
 		body["max_tokens"] = 1024
@@ -56,7 +79,24 @@ static func _error(transport: int, code: int, raw: String) -> String:
 		return ""
 	var detail := "HTTP %d." % code
 	match code:
-		400, 404: detail += " Check the model ID and provider compatibility."
+		400, 404:
+			# Classify known error families locally. Never display provider raw text.
+			var parsed: Variant = JSON.parse_string(raw) if raw.length() < MAX_BODY else null
+			var message := ""
+			if parsed is Dictionary and parsed.get("error") is Dictionary:
+				message = str(parsed["error"].get("message", "")).to_lower()
+			if "data policy" in message or "privacy" in message or "data retention" in message:
+				detail += " No matching endpoint under your account privacy settings. Select a compatible model."
+			elif "no endpoints" in message or "no providers" in message:
+				detail += " No matching model endpoint. Try another supported text model."
+			elif "context length" in message or "context window" in message or "too many tokens" in message:
+				detail += " Model context limit reached. Shorten your message or turn off chat context."
+			elif "model" in message and ("invalid" in message or "not found" in message or "not supported" in message):
+				detail += " Model ID is invalid or unavailable."
+			elif "parameter" in message or "max_tokens" in message or "max_completion_tokens" in message:
+				detail += " Model rejected a request parameter."
+			else:
+				detail += " Provider rejected the request. Check the model ID and provider compatibility."
 		401, 403: detail += " Check API key, access and region."
 		402: detail += " Provider requires credits."
 		429:
