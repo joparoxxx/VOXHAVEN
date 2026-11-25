@@ -5,6 +5,8 @@ const Bus = preload("res://core/event_bus.gd")
 const MAX_BYTES := 65536
 const ToolRegistry = preload("res://core/tool_registry.gd")
 const TOOLS = ToolRegistry.IDS
+const Snapshot = preload("res://core/snapshot_store.gd")
+var _storage: RefCounted
 var _root: String
 var _skills: Dictionary = {}
 var _bindings: Dictionary = {}
@@ -13,9 +15,16 @@ var _ready := false
 
 func _init(root: String = "user://cubyte/skills") -> void:
 	_root = root
-	_ready = DirAccess.make_dir_recursive_absolute(root) == OK
-	if _ready and FileAccess.file_exists(root + "/registry.json"):
-		_ready = _load()
+	_storage = Snapshot.new(root, "registry.json")
+	_ready = _storage.ready
+	if _ready:
+		var saved: Dictionary = _storage.read("registry", "", 16777216)
+		_ready = saved.get("ok", false)
+		if _ready and saved.get("found", false):
+			_ready = _load()
+			if _ready and _storage.native and saved.get("legacy", false):
+				_ready = _save()
+
 
 func _valid_name(value: String) -> bool:
 	if value.is_empty() or value.length() > 64 or value.begins_with("-") or value.ends_with("-") or value.contains("--"):
@@ -117,22 +126,13 @@ func equip(robot_id: String, name_: String, tool: String) -> bool:
 	return true
 
 func _save() -> bool:
-	var temp := _root + "/registry.json.tmp"
-	var f := FileAccess.open(temp, FileAccess.WRITE)
-	if f == null:
-		return false
-	f.store_string(JSON.stringify({"version": 1, "skills": _skills, "bindings": _bindings, "inventory": _inventory}))
-	f.flush()
-	var ok := f.get_error() == OK
-	f.close()
-	return ok and DirAccess.rename_absolute(temp, _root + "/registry.json") == OK
+	return _storage.write("registry", JSON.stringify({"version": 1, "skills": _skills, "bindings": _bindings, "inventory": _inventory}))
 
 func _load() -> bool:
-	var f := FileAccess.open(_root + "/registry.json", FileAccess.READ)
-	if f == null or f.get_length() > 16 * 1024 * 1024:
+	var saved_data: Dictionary = _storage.read("registry", "", 16777216)
+	if not saved_data.get("ok", false) or not saved_data.get("found", false):
 		return false
-	var raw: Variant = JSON.parse_string(f.get_as_text())
-	f.close()
+	var raw: Variant = JSON.parse_string(str(saved_data.get("value", "")))
 	if not raw is Dictionary or raw.get("version") != 1 or not raw.get("skills") is Dictionary or not raw.get("bindings") is Dictionary:
 		return false
 	var skills: Dictionary = raw["skills"]
