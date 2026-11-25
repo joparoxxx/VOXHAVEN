@@ -11,6 +11,8 @@ var status: Label
 var send: Button
 var stop: Button
 var members: Dictionary = {}
+const Snapshot = preload("res://core/snapshot_store.gd")
+var store = Snapshot.new("user://cubyte/team", "history.json")
 var messages: Array = []
 var queue: Array[String] = []
 var http: HTTPRequest
@@ -51,7 +53,7 @@ func _ready() -> void:
 	transcript.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	column.add_child(transcript)
 	input = TextEdit.new()
-	input.placeholder_text = "Message the team..."
+	input.placeholder_text = "Message everyone or @ATLAS / @PIXEL / @MESH"
 	input.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
 	input.custom_minimum_size.y = 100
 	column.add_child(input)
@@ -73,6 +75,7 @@ func _ready() -> void:
 	http.body_size_limit = Online.MAX_BODY
 	add_child(http)
 	http.request_completed.connect(_completed)
+	_restore()
 	_refresh()
 
 func show_team(source: Object) -> void:
@@ -98,8 +101,13 @@ func _start() -> void:
 		_wipe()
 		return
 	queue.clear()
+	var mentions: Array[String] = []
+	var tokens := question.to_lower().replace(",", " ").replace(":", " ").replace(".", " ").replace("!", " ").replace("?", " ").split(" ", false)
 	for id in IDS:
-		if members[id].button_pressed:
+		if ("@" + id) in tokens:
+			mentions.append(id)
+	for id in IDS:
+		if id in mentions or (mentions.is_empty() and members[id].button_pressed):
 			queue.append(id)
 	if queue.is_empty():
 		status.text = "Select at least one Cubot."
@@ -146,6 +154,11 @@ func _append(sender: String, content: String) -> void:
 	messages.append({"sender": sender, "text": content})
 	while messages.size() > 36:
 		messages.pop_front()
+	_render()
+	if not _save():
+		status.text = "Local team history could not be saved."
+
+func _render() -> void:
 	transcript.clear()
 	for entry in messages:
 		transcript.push_color(UI.ACCENT if entry["sender"] == "you" else Color("#a8d9be"))
@@ -175,6 +188,8 @@ func _clear() -> void:
 	if not busy:
 		messages.clear()
 		transcript.clear()
+		if not _save():
+			status.text = "Could not clear stored history."
 
 func _close() -> void:
 	_stop()
@@ -186,3 +201,19 @@ func _refresh() -> void:
 	input.editable = not busy
 	for check in members.values():
 		check.disabled = busy
+
+func _save() -> bool:
+	return store.write("team", JSON.stringify({"version": 1, "messages": messages}))
+
+func _restore() -> void:
+	var saved: Dictionary = store.read("team", "", 524288)
+	if not saved.get("ok", false) or not saved.get("found", false):
+		return
+	var raw: Variant = JSON.parse_string(str(saved.get("value", "")))
+	if not raw is Dictionary or raw.get("version") != 1 or not raw.get("messages") is Array:
+		return
+	var entries: Array = raw["messages"]
+	for entry in entries.slice(maxi(0, entries.size() - 36)):
+		if entry is Dictionary and entry.get("sender") in ["you", "atlas", "pixel", "mesh"] and entry.get("text") is String:
+			messages.append({"sender": entry["sender"], "text": str(entry["text"]).left(2048)})
+	_render()
