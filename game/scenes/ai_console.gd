@@ -134,7 +134,13 @@ func _load() -> void:
 	if not Policy.valid_model_path(path):
 		status.text = "Cannot read GGUF header. Select a readable local model file."
 		return
-	if FileAccess.get_size(path) > 3 * 1024 * 1024 * 1024:
+	var model_file := FileAccess.open(path, FileAccess.READ)
+	if model_file == null:
+		status.text = "Model file unavailable."
+		return
+	var file_size := model_file.get_length()
+	model_file.close()
+	if file_size > 3 * 1024 * 1024 * 1024:
 		status.text = "Prototype limit: 3 GiB model file. Try a smaller quantized model."
 		return
 	pending = {}
@@ -144,6 +150,7 @@ func _load() -> void:
 func _unload() -> void:
 	if worker == null and runtime != null:
 		pending = {}
+		_draw_history()
 		_start("unload", Callable(runtime, "unload_model"))
 
 func _ask() -> void:
@@ -200,7 +207,7 @@ func _process(_delta: float) -> void:
 	elif operation == "ask" and ok:
 		var response: String = result.get("text", "")
 		var turns: Array = histories.get(robot_id, [])
-		turns.append({"user": question.left(500), "assistant": response.left(1000)})
+		turns.append({"user": question.left(500), "assistant": response.left(4096)})
 		while turns.size() > 3:
 			turns.pop_front()
 		histories[robot_id] = turns
@@ -216,6 +223,8 @@ func _draw_history() -> void:
 	transcript.clear()
 	for turn in histories.get(robot_id, []):
 		transcript.add_text("You: " + str(turn["user"]) + "\n" + robot_id.to_upper() + ": " + str(turn["assistant"]) + "\n\n")
+	if not pending.is_empty():
+		transcript.add_text("Proposed action (requires approval):\n" + JSON.stringify(pending) + "\n")
 
 func _approve() -> void:
 	if worker != null or pending.is_empty():
