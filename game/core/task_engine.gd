@@ -1,6 +1,7 @@
 extends RefCounted
 ## Deterministic, single-worker native runtime. No shell or network access.
 signal task_changed(task: Dictionary)
+const Bus = preload("res://core/event_bus.gd")
 const ToolRegistry = preload("res://core/tool_registry.gd")
 const TOOLS = ToolRegistry.IDS
 const MAX_TEXT_BYTES := 65536
@@ -9,11 +10,30 @@ var _tasks: Dictionary = {}
 var _next_id: int = 1
 var _ready: bool = false
 var _permission_checker: Callable
+var _store: Object
 
 func _init(root: String = "user://cubyte") -> void:
 	_root = root
 	_ready = DirAccess.make_dir_recursive_absolute(_root + "/artifacts") == OK
-	if _ready and FileAccess.file_exists(_root + "/tasks.json"):
+	if not _ready:
+		return
+	if ClassDB.class_exists("CubyteStore"):
+		_store = ClassDB.instantiate("CubyteStore")
+		if _store == null or not _store.call("open", ProjectSettings.globalize_path(_root + "/tasks.sqlite3")):
+			_ready = false
+			return
+		var saved: Dictionary = _store.call("read", "tasks")
+		if not saved.get("ok", false):
+			_ready = false
+			return
+		if saved.get("found", false) or FileAccess.file_exists(_root + "/tasks.json"):
+			_ready = load_state()
+		else:
+			_ready = _save()
+	elif FileAccess.file_exists(_root + "/tasks.sqlite3"):
+		# Never fall back to stale legacy JSON once the native database exists.
+		_ready = false
+	elif FileAccess.file_exists(_root + "/tasks.json"):
 		_ready = load_state()
 
 func is_ready() -> bool:
@@ -53,7 +73,7 @@ func enqueue(robot_id: String, tool: String, payload: String, requested_by: Stri
 		_tasks.erase(id)
 		_ready = false
 		return ""
-	task_changed.emit(get_task(id))
+	_notify(id)
 	return id
 
 func get_task(id: String) -> Dictionary:
@@ -133,24 +153,45 @@ func _transition(id: String, status: String) -> bool:
 		_tasks[id]["status"] = "interrupted"
 		_tasks[id]["artifact"] = ""
 		_tasks[id]["error"] = "Could not persist task state."
-		task_changed.emit(get_task(id))
+		_notify(id)
 		return false
-	task_changed.emit(get_task(id))
+	_notify(id)
 	return true
 
+func _notify(id: String) -> void:
+	var snapshot := get_task(id)
+	Bus.publish("task.changed", {"id": id, "robot_id": snapshot.get("robot_id", ""), "status": snapshot.get("status", "")})
+	task_changed.emit(snapshot)
+
 func _save() -> bool:
+	var encoded := JSON.stringify({"version": 1, "next_id": _next_id, "tasks": _tasks})
+	if _store != null:
+		return _store.call("write", "tasks", encoded) == true
 	var temp := _root + "/tasks.json.tmp"
 	var file := FileAccess.open(temp, FileAccess.WRITE)
 	if file == null:
 		return false
-	file.store_string(JSON.stringify({"version": 1, "next_id": _next_id, "tasks": _tasks}))
+	file.store_string(encoded)
 	file.flush()
 	var success := file.get_error() == OK
 	file.close()
 	return success and DirAccess.rename_absolute(temp, _root + "/tasks.json") == OK
 
 func load_state() -> bool:
-	var raw: Variant = JSON.parse_string(FileAccess.get_file_as_string(_root + "/tasks.json"))
+	var encoded := ""
+	if _store != null:
+		var saved: Dictionary = _store.call("read", "tasks")
+		if not saved.get("ok", false):
+			return false
+		if saved.get("found", false):
+			encoded = str(saved.get("value", ""))
+		else:
+			encoded = FileAccess.get_file_as_string(_root + "/tasks.json")
+	else:
+		encoded = FileAccess.get_file_as_string(_root + "/tasks.json")
+	if encoded.to_utf8_buffer().size() > 32 * 1024 * 1024:
+		return false
+	var raw: Variant = JSON.parse_string(encoded)
 	if not raw is Dictionary or raw.get("version") != 1 or not raw.get("tasks") is Dictionary:
 		return false
 	var restored: Dictionary = raw["tasks"]
