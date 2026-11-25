@@ -21,3 +21,6 @@ The code has not been compiled or executed on Godot or Android in this batch. Te
 2. Build and sign the Android debug APK only after CI authorization.
 3. Test on an existing install without uninstalling; check signing compatibility and back up data where possible.
 4. Confirm migration, permissions, Gemini group chat, actual file bytes, navigation and secure vault. Keep Gemini session-only if vault validation fails.
+
+## Build authorization
+The owner has authorized a debug build of this batch. Run the existing Godot CI workflow, including native bridge compilation, regression tests, and Android APK export. Do not merge into main.
