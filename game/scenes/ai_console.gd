@@ -404,7 +404,14 @@ func _online_completed(result: int, code: int, _headers: PackedStringArray, body
 			return
 		online_busy = false
 		online_operation = ""
-		status.text = "Guest daily limit reached." if code == 429 else "Guest connection unavailable."
+		if code == 429:
+			status.text = "Guest sign-in limit reached. Chat quota is separate."
+			_read_guest_quota(code, _headers, body)
+		elif code == 401:
+			status.text = "Guest session rejected. Contact support."
+		else:
+			status.text = "Guest sign-in unavailable (HTTP %d)." % code
+		connection.text = "Guest not connected"
 		settings_status.text = status.text
 		_draw_history()
 		_update_buttons()
@@ -529,7 +536,7 @@ func _update_buttons() -> void:
 	model_editor.editable = not online_busy
 	key_editor.editable = not online_busy
 	share_context.disabled = online_busy
-	test_button.disabled = online_busy
+	test_button.disabled = online_busy or (not personal_mode.button_pressed and Time.get_ticks_msec() < guest_wait_until)
 	clear_key_button.disabled = online_busy
 	clear_history_button.disabled = online_busy or robot_id.is_empty()
 	back_button.disabled = online_busy
@@ -581,12 +588,13 @@ func _guest_error(code: int, body: PackedByteArray) -> String:
 	return "Daily guest AI limit reached."
 
 func _update_quota_display() -> void:
-	if not is_instance_valid(quota_label):
+	if not is_instance_valid(quota_label) or not is_instance_valid(test_button):
 		return
 	var is_guest := not personal_mode.button_pressed
 	var seconds := maxi(0, ceili(float(guest_wait_until - Time.get_ticks_msec()) / 1000.0))
 	var waiting := is_guest and seconds > 0
 	ask_button.disabled = online_busy or waiting
+	test_button.disabled = online_busy or waiting
 	ask_button.text = ("Wait %ds" % seconds) if waiting and seconds < 120 else ("Wait" if waiting else "Send")
 	quota_label.visible = is_guest
 	var remaining_text := "Daily messages left: %d" % guest_remaining if guest_remaining >= 0 else "Guest AI · shared daily quota"
