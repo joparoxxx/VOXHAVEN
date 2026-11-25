@@ -22,13 +22,28 @@ jobs:
           chmod +x /tmp/godot/Godot_v4.4.1-stable_linux.x86_64
           echo "/tmp/godot" >> "$GITHUB_PATH"
       - name: Import
-        run: Godot_v4.4.1-stable_linux.x86_64 --headless --path game --editor --import
+        run: |
+          set -o pipefail
+          timeout 120s Godot_v4.4.1-stable_linux.x86_64 --headless --path game --editor --import 2>&1 | tee /tmp/cubyte-import.log
+          if grep -E 'SCRIPT ERROR|ERROR: Failed to load script' /tmp/cubyte-import.log; then exit 1; fi
       - name: Task engine tests
-        run: Godot_v4.4.1-stable_linux.x86_64 --headless --path game --script res://tests/test_tasks.gd
+        run: |
+          set -o pipefail
+          timeout 60s Godot_v4.4.1-stable_linux.x86_64 --headless --path game --script res://tests/test_tasks.gd 2>&1 | tee /tmp/test_tasks.log
+          if grep -E 'SCRIPT ERROR|ERROR: Failed to load script' /tmp/test_tasks.log; then exit 1; fi
+          grep -Fx 'CUBYTE task tests: 0 failures' /tmp/test_tasks.log
       - name: Skill registry tests
-        run: Godot_v4.4.1-stable_linux.x86_64 --headless --path game --script res://tests/test_skills.gd
+        run: |
+          set -o pipefail
+          timeout 60s Godot_v4.4.1-stable_linux.x86_64 --headless --path game --script res://tests/test_skills.gd 2>&1 | tee /tmp/test_skills.log
+          if grep -E 'SCRIPT ERROR|ERROR: Failed to load script' /tmp/test_skills.log; then exit 1; fi
+          grep -Fx 'CUBYTE skill tests: 0 failures' /tmp/test_skills.log
       - name: Robot profile and permission tests
-        run: Godot_v4.4.1-stable_linux.x86_64 --headless --path game --script res://tests/test_robots.gd
+        run: |
+          set -o pipefail
+          timeout 60s Godot_v4.4.1-stable_linux.x86_64 --headless --path game --script res://tests/test_robots.gd 2>&1 | tee /tmp/test_robots.log
+          if grep -E 'SCRIPT ERROR|ERROR: Failed to load script' /tmp/test_robots.log; then exit 1; fi
+          grep -Fx 'CUBYTE robot tests: 0 failures' /tmp/test_robots.log
       - name: Scene smoke
         run: Godot_v4.4.1-stable_linux.x86_64 --headless --path game --quit-after 10
   android-debug:
