@@ -4,7 +4,7 @@ const IDS := ["atlas", "pixel", "mesh"]
 const MAX_TURNS := 12
 const MAX_FILE_BYTES := 524288
 const Snapshot = preload("res://core/snapshot_store.gd")
-var _storage: RefCounted
+var _storage
 var _root: String
 
 func _init(root: String = "user://cubyte/chats") -> void:
