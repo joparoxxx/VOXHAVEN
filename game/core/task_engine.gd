@@ -2,6 +2,7 @@ extends RefCounted
 ## Deterministic, single-worker native runtime. No shell or network access.
 signal task_changed(task: Dictionary)
 const Bus = preload("res://core/event_bus.gd")
+const Writer = preload("res://core/artifact_writer.gd")
 const ToolRegistry = preload("res://core/tool_registry.gd")
 const TOOLS = ToolRegistry.IDS
 const MAX_TEXT_BYTES := 65536
@@ -62,7 +63,7 @@ func history(robot_id: String, limit: int = 30) -> Array:
 func enqueue(robot_id: String, tool: String, payload: String, requested_by: String = "") -> String:
 	if not _ready or robot_id.is_empty() or robot_id.length() > 64 or not tool in TOOLS or payload.to_utf8_buffer().size() > MAX_TEXT_BYTES:
 		return ""
-	if not _allowed(robot_id, tool):
+	if not Writer.valid(tool, payload) or not _allowed(robot_id, tool):
 		return ""
 	if not requested_by.is_empty() and (requested_by != "atlas" or robot_id not in ["pixel", "mesh"] or not _allowed(requested_by, tool)):
 		return ""
@@ -110,10 +111,9 @@ func _execute(id: String) -> void:
 	var tool: String = task["tool"]
 	if not _allowed(task["robot_id"], tool) or (not str(task.get("requested_by", "")).is_empty() and not _allowed(task["requested_by"], tool)):
 		task["error"] = "Tool permission denied."
-		task["payload"] = ""
 		_transition(id, "failed")
 		return
-	var path := _root + "/artifacts/" + id + (".txt" if tool == "text" else ".png")
+	var path := _root + "/artifacts/" + id + ("." + str(ToolRegistry.describe(tool)["extension"]))
 	var valid := false
 	if tool == "text":
 		var file := FileAccess.open(path, FileAccess.WRITE)
@@ -134,6 +134,8 @@ func _execute(id: String) -> void:
 		if image.save_png(path) == OK:
 			var decoded := Image.new()
 			valid = decoded.load(path) == OK and decoded.get_width() == 128 and decoded.get_height() == 128
+	else:
+		valid = Writer.create(tool, task["payload"], path)
 	if valid:
 		task["artifact"] = path
 		task["payload"] = ""
@@ -212,7 +214,7 @@ func load_state() -> bool:
 		item["requested_by"] = requester
 		if item["payload"].to_utf8_buffer().size() > MAX_TEXT_BYTES:
 			return false
-		var expected := _root + "/artifacts/" + id + (".txt" if item["tool"] == "text" else ".png")
+		var expected := _root + "/artifacts/" + id + ("." + str(ToolRegistry.describe(item["tool"])["extension"]))
 		if item["status"] == "running":
 			item["status"] = "interrupted"
 			item["artifact"] = ""
