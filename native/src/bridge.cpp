@@ -4,6 +4,7 @@
 #include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/string.hpp>
 #include <llama.h>
+#include <sqlite3.h>
 #include <algorithm>
 #include <atomic>
 #include <memory>
@@ -105,10 +106,69 @@ public:
     }
 };
 
+// A narrow storage API: no caller-provided SQL, no extensions, no network.
+class CubyteStore : public RefCounted {
+    GDCLASS(CubyteStore, RefCounted)
+    sqlite3 *db = nullptr;
+protected:
+    static void _bind_methods() {
+        ClassDB::bind_method(D_METHOD("open", "path"), &CubyteStore::open);
+        ClassDB::bind_method(D_METHOD("read", "key"), &CubyteStore::read);
+        ClassDB::bind_method(D_METHOD("write", "key", "value"), &CubyteStore::write);
+    }
+public:
+    ~CubyteStore() override { if (db) sqlite3_close(db); }
+    bool open(const String &path) {
+        if (db) return false;
+        auto p = path.utf8();
+        int rc = sqlite3_open_v2(p.get_data(), &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nullptr);
+        if (rc == SQLITE_OK) {
+            sqlite3_busy_timeout(db, 1500);
+            sqlite3_db_config(db, SQLITE_DBCONFIG_DEFENSIVE, 1, nullptr);
+            sqlite3_db_config(db, SQLITE_DBCONFIG_TRUSTED_SCHEMA, 0, nullptr);
+            rc = sqlite3_exec(db, "CREATE TABLE IF NOT EXISTS snapshots (key TEXT PRIMARY KEY, value TEXT NOT NULL)", nullptr, nullptr, nullptr);
+        }
+        if (rc != SQLITE_OK) { if (db) sqlite3_close(db); db = nullptr; return false; }
+        return true;
+    }
+    Dictionary read(const String &key) {
+        Dictionary out; out["ok"] = false; out["found"] = false;
+        if (!db || key.is_empty() || key.length() > 128) return out;
+        sqlite3_stmt *raw = nullptr;
+        if (sqlite3_prepare_v2(db, "SELECT value FROM snapshots WHERE key=?1", -1, &raw, nullptr) != SQLITE_OK) return out;
+        std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> stmt(raw, sqlite3_finalize);
+        auto k = key.utf8();
+        if (sqlite3_bind_text(raw, 1, k.get_data(), k.length(), SQLITE_TRANSIENT) != SQLITE_OK) return out;
+        int rc = sqlite3_step(raw);
+        if (rc == SQLITE_ROW) {
+            int bytes = sqlite3_column_bytes(raw, 0);
+            if (bytes > 32 * 1024 * 1024) return out;
+            const auto *value = sqlite3_column_text(raw, 0);
+            if (!value) return out;
+            out["value"] = String::utf8(reinterpret_cast<const char *>(value), bytes);
+            out["found"] = true;
+        } else if (rc != SQLITE_DONE) return out;
+        out["ok"] = true;
+        return out;
+    }
+    bool write(const String &key, const String &value) {
+        if (!db || key.is_empty() || key.length() > 128) return false;
+        auto k = key.utf8(), v = value.utf8();
+        if (v.length() > 32 * 1024 * 1024) return false;
+        sqlite3_stmt *raw = nullptr;
+        if (sqlite3_prepare_v2(db, "INSERT INTO snapshots(key,value) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value", -1, &raw, nullptr) != SQLITE_OK) return false;
+        std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> stmt(raw, sqlite3_finalize);
+        if (sqlite3_bind_text(raw, 1, k.get_data(), k.length(), SQLITE_TRANSIENT) != SQLITE_OK ||
+            sqlite3_bind_text(raw, 2, v.get_data(), v.length(), SQLITE_TRANSIENT) != SQLITE_OK) return false;
+        return sqlite3_step(raw) == SQLITE_DONE;
+    }
+};
+
 static void initialize(ModuleInitializationLevel level) {
     if (level != MODULE_INITIALIZATION_LEVEL_SCENE) return;
     llama_backend_init();
     GDREGISTER_CLASS(CubyteLlama);
+    GDREGISTER_CLASS(CubyteStore);
 }
 static void uninitialize(ModuleInitializationLevel level) {
     if (level == MODULE_INITIALIZATION_LEVEL_SCENE) llama_backend_free();
