@@ -2,7 +2,8 @@ extends RefCounted
 ## Safe, deliberately restricted SKILL.md metadata registry.
 ## Imported text is data; no scripts, shell commands or network access.
 const MAX_BYTES := 65536
-const TOOLS := ["text", "png"]
+const ToolRegistry = preload("res://core/tool_registry.gd")
+const TOOLS = ToolRegistry.IDS
 var _root: String
 var _skills: Dictionary = {}
 var _bindings: Dictionary = {}
