@@ -266,7 +266,7 @@ func _restore() -> void:
 		return
 	var entries: Array = raw["messages"]
 	for entry in entries.slice(maxi(0, entries.size() - 36)):
-		if entry is Dictionary and entry.get("sender") in ["you", "atlas", "pixel", "mesh"] and entry.get("text") is String:
+		if entry is Dictionary and entry.get("sender") in ["you", "atlas", "pixel", "mesh", "office"] and entry.get("text") is String:
 			messages.append({"sender": entry["sender"], "text": str(entry["text"]).left(2048)})
 	_render()
 
@@ -296,3 +296,12 @@ func _approve() -> void:
 	_reject()
 	hide()
 	proposal_approved.emit(owner, action["tool"], action["payload"], worker)
+
+# Actual engine results only, not model-generated claims.
+func record_task_result(task: Dictionary) -> void:
+	var summary := "Task #" + str(task.get("id", "")) + " · " + str(task.get("robot_id", "")).to_upper() + " · " + str(task.get("tool", "")).to_upper() + " · " + str(task.get("status", ""))
+	if task.get("status") == "succeeded":
+		summary += ". File ready in Tasks & files."
+	elif not str(task.get("error", "")).is_empty():
+		summary += ". " + str(task["error"])
+	_append("office", summary)
