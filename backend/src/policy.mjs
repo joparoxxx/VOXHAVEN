@@ -23,5 +23,5 @@ export function quotaPlan(kind, uid, ip, env) {
     ["chat:user:"+uid, limit(env.DAILY_USER_REQUESTS,10,1000)],
     ["chat:ip:"+ip, limit(env.DAILY_IP_REQUESTS,30,10000)]
   ];
-  return [[kind+":global", 500], [kind+":ip:"+ip, kind === "guest" ? 5 : 30]];
+  return [[kind+":global", 500], [kind+":ip:"+ip, kind === "guest" ? limit(env.DAILY_GUEST_IP_REQUESTS,5,20) : 30]];
 }
