@@ -462,7 +462,7 @@ func _online_completed(result: int, code: int, _headers: PackedStringArray, body
 		if personal_mode.button_pressed:
 			status.text = str(parsed.get("error", "OpenAI error."))
 		else:
-			status.text = _guest_error(code, body)
+			status.text = _guest_error(code, body) + "\n" + _guest_diagnostic(result, code, body)
 		settings_status.text = status.text
 	request_key = ""
 	_draw_history()
@@ -585,8 +585,12 @@ func _guest_error(code: int, body: PackedByteArray) -> String:
 	if code != 429:
 		if data is Dictionary:
 			match str(data.get("error", "")):
-				"AI_REGION_UNAVAILABLE", "AI_UPSTREAM_UNAVAILABLE", "GEMINI_UNAVAILABLE":
-					return "Guest AI is temporarily unavailable. Local office tools still work."
+				"AI_REGION_UNAVAILABLE":
+					return "Gemini rejected the gateway region. Local tools still work."
+				"AI_UPSTREAM_UNAVAILABLE":
+					return "Gemini service is temporarily unavailable."
+				"GEMINI_UNAVAILABLE":
+					return "Gateway could not complete the Gemini request."
 				"AI_RATE_OR_QUOTA":
 					return "The AI provider is at its limit. Try again later."
 				"AI_RESPONSE_BLOCKED":
@@ -613,6 +617,21 @@ func _guest_error(code: int, body: PackedByteArray) -> String:
 					"chat_user_messages":
 						return "Your daily message allowance reached."
 	return "Daily guest AI limit reached."
+
+# Show only a bounded machine-readable error code, never raw provider data.
+func _guest_diagnostic(transport: int, code: int, body: PackedByteArray) -> String:
+	if transport != HTTPRequest.RESULT_SUCCESS:
+		return "Network diagnostic: %d (HTTP %d)" % [transport, code]
+	var data: Variant = JSON.parse_string(body.get_string_from_utf8())
+	var reason := ""
+	if data is Dictionary:
+		reason = str(data.get("error", ""))
+	var valid := not reason.is_empty() and reason.length() <= 80
+	for ch in reason:
+		if not ch in "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_":
+			valid = false
+			break
+	return "HTTP %d · %s" % [code, reason if valid else "NO_ERROR_CODE"]
 
 func _update_quota_display() -> void:
 	if not is_instance_valid(quota_label) or not is_instance_valid(test_button):
