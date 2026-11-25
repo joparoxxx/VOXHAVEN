@@ -227,3 +227,33 @@ func load_state() -> bool:
 	_tasks = restored
 	_next_id = next
 	return _save()
+
+# Read-only dashboard snapshots; no raw task payloads in the listing.
+func list_tasks(limit: int = 100) -> Array:
+	var result: Array = []
+	for n in range(_next_id - 1, 0, -1):
+		if result.size() >= clampi(limit, 1, 200):
+			break
+		var item := get_task(str(n))
+		if not item.is_empty():
+			item.erase("payload")
+			result.append(item)
+	return result
+
+func retry_task(id: String) -> String:
+	var task := get_task(id)
+	if task.get("status", "") not in ["failed", "interrupted"]:
+		return ""
+	return enqueue(str(task["robot_id"]), str(task["tool"]), str(task["payload"]), str(task.get("requested_by", "")))
+
+func artifact_path(id: String) -> String:
+	var task := get_task(id)
+	if task.get("status") != "succeeded":
+		return ""
+	var definition: Dictionary = ToolRegistry.describe(str(task.get("tool", "")))
+	if definition.is_empty():
+		return ""
+	var expected := _root + "/artifacts/" + id + "." + str(definition["extension"])
+	if task.get("artifact") != expected or not FileAccess.file_exists(expected):
+		return ""
+	return expected
