@@ -9,6 +9,8 @@ const Roster = preload("res://core/robot_roster.gd")
 const AIConsole = preload("res://scenes/ai_console.gd")
 const TeamChat = preload("res://scenes/team_chat.gd")
 var team_chat: Window
+const Workspace = preload("res://scenes/workspace.gd")
+var workspace: Window
 const UI = preload("res://ui/mobile_theme.gd")
 var ai_console
 var roster = Roster.new()
@@ -199,6 +201,9 @@ func _build_ui() -> void:
 	var team_button := UI.button("Team Chat", _show_team, true)
 	team_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	workspace_row.add_child(team_button)
+	var workspace_button := UI.button("Tasks & files", _show_workspace)
+	workspace_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	workspace_row.add_child(workspace_button)
 
 	var bottom := PanelContainer.new()
 	cubot_actions = bottom
@@ -278,6 +283,10 @@ func _build_ui() -> void:
 	team_chat = TeamChat.new()
 	team_chat.hide()
 	add_child(team_chat)
+	workspace = Workspace.new()
+	workspace.hide()
+	add_child(workspace)
+	workspace.connect("run_requested", _run_queued)
 	_build_skill_dialog()
 	_build_robot_dialog()
 	_select_cubot(-1)
@@ -338,6 +347,9 @@ func _queue(tool: String, payload: String, requested_by: String = "") -> void:
 	if pending_id.is_empty():
 		status.text = "Task rejected: permission, input or storage error."
 		return
+	_start_queued()
+
+func _start_queued() -> void:
 	busy = true
 	progress_timer = 0.0
 	chat_button.disabled = true
@@ -673,3 +685,20 @@ func _create_selected_file() -> void:
 		return
 	var tool: String = Tools.IDS[local_tool.selected]
 	_queue(tool, "" if tool == "png" else local_payload.text)
+
+func _show_workspace() -> void:
+	if not busy and not ai_console.online_busy:
+		workspace.call("show_workspace", engine)
+
+func _run_queued(id: String) -> void:
+	if busy:
+		return
+	var task: Dictionary = engine.get_task(id)
+	if task.get("status") != "queued":
+		return
+	var index := ROBOT_IDS.find(task.get("robot_id", ""))
+	if index < 0:
+		return
+	_select_cubot(index)
+	pending_id = id
+	_start_queued()
