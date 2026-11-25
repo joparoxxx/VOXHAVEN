@@ -3,7 +3,7 @@ const UI = preload("res://ui/mobile_theme.gd")
 const Tools = preload("res://core/tool_registry.gd")
 const Writer = preload("res://core/artifact_writer.gd")
 const Snapshot = preload("res://core/snapshot_store.gd")
-const ROBOTS := ["atlas", "pixel", "mesh"]
+const ROBOTS := ["atlas", "pixel", "mesh", "nova"]
 var engine
 var roster
 var rows: Array = []
@@ -44,6 +44,8 @@ func _ready() -> void:
 func show_builder(source: Object, profiles: Object) -> void:
 	engine = source
 	roster = profiles
+	for row in rows:
+		row["robot"].set_item_disabled(3, not roster.is_active("nova"))
 	UI.show_modal(self)
 
 func _add_empty() -> void:
@@ -60,6 +62,7 @@ func _add_step(data: Dictionary) -> void:
 	var robot := OptionButton.new()
 	for id in ROBOTS:
 		robot.add_item(id.to_upper())
+	robot.set_item_disabled(3, not is_instance_valid(roster) or not roster.is_active("nova"))
 	robot.select(maxi(0, ROBOTS.find(data.get("robot_id", "atlas"))))
 	column.add_child(robot)
 	var tool := OptionButton.new()
