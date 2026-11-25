@@ -52,6 +52,12 @@ jobs:
           timeout 60s Godot_v4.4.1-stable_linux.x86_64 --headless --path game --script res://tests/test_ai.gd 2>&1 | tee /tmp/test_ai.log
           if grep -E 'SCRIPT ERROR|ERROR: Failed to load script' /tmp/test_ai.log; then exit 1; fi
           grep -Fx 'CUBYTE AI policy tests: 0 failures' /tmp/test_ai.log
+      - name: Online AI protocol tests
+        run: |
+          set -o pipefail
+          timeout 60s Godot_v4.4.1-stable_linux.x86_64 --headless --path game --script res://tests/test_online_ai.gd 2>&1 | tee /tmp/test_online_ai.log
+          if grep -E 'SCRIPT ERROR|ERROR: Failed to load script' /tmp/test_online_ai.log; then exit 1; fi
+          grep -Fx 'CUBYTE online AI tests: 0 failures' /tmp/test_online_ai.log
       - name: Native bridge smoke
         run: |
           set -o pipefail
@@ -138,7 +144,7 @@ jobs:
           grep -F "package: name='com.urfavxbf.cubyte'" /tmp/apk-info.txt
           grep -F "arm64-v8a" /tmp/apk-info.txt
           unzip -Z1 dist/CUBYTE-debug.apk | grep -Fx "lib/arm64-v8a/libcubyte_llama.so"
-          if grep -F "android.permission.INTERNET" /tmp/apk-info.txt; then echo "Unexpected internet permission"; exit 1; fi
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump permissions dist/CUBYTE-debug.apk | grep -F "android.permission.INTERNET"
           (cd dist && sha256sum CUBYTE-debug.apk > SHA256SUMS.txt)
       - uses: actions/upload-artifact@v4
         with:
