@@ -60,9 +60,11 @@ test("one in-flight request, cooldown, failed refund and attempt retention",asyn
 test("failed responses cannot bypass global and player attempt caps",async t=>{
   const f=fixture(t,{DAILY_GLOBAL_REQUESTS:"2",DAILY_USER_ATTEMPTS:"1"});
   const a=await f.reserve("a");await f.release(a,false);f.expire("a");
-  assert.equal((await f.reserve("a")).error,"DAILY_LIMIT");
+  const userDenied=await f.reserve("a");
+  assert.equal(userDenied.error,"DAILY_LIMIT");assert.equal(userDenied.scope,"chat_user_attempts");
   const b=await f.reserve("b");await f.release(b,false);
-  assert.equal((await f.reserve("c")).error,"DAILY_LIMIT");
+  const globalDenied=await f.reserve("c");
+  assert.equal(globalDenied.error,"DAILY_LIMIT");assert.equal(globalDenied.scope,"chat_global");
   assert.equal(f.count("chat:global"),2);
 });
 test("rolling minute cap shared across users",async t=>{
