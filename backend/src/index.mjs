@@ -67,7 +67,7 @@ async function reserve(env,kind,uid,ip) {
 }
 function quotaDenied(reservation) {
   const retry=Math.max(1,Math.ceil(reservation.retry_after||1));
-  return Response.json({error:reservation.error||"DAILY_LIMIT",retry_after:retry},{status:429,headers:{"Cache-Control":"no-store","Retry-After":String(retry)}});
+  return Response.json({error:reservation.error||"DAILY_LIMIT",scope:reservation.scope||undefined,retry_after:retry},{status:429,headers:{"Cache-Control":"no-store","Retry-After":String(retry)}});
 }
 async function release(reservation,success) {
   if(!reservation?.lease)return;
@@ -110,7 +110,7 @@ export class Quota extends DurableObject {
       let remaining=0;
       for(const [k,max] of plan){
         const current=sql.exec("SELECT n FROM usage WHERE day=? AND k=?",day,k).toArray()[0]?.n||0;
-        if(current>=max)return {ok:false,error:"DAILY_LIMIT",retry_after:Math.ceil((Date.parse(day+"T00:00:00Z")+86400000-now)/1000)};
+        if(current>=max)return {ok:false,error:"DAILY_LIMIT",scope:k.startsWith("chat:attempt:user:")?"chat_user_attempts":k.startsWith("chat:user:")?"chat_user_messages":k.startsWith("chat:ip:")?"chat_ip":k==="chat:global"?"chat_global":kind+(k.endsWith(":global")?"_global":"_ip"),retry_after:Math.ceil((Date.parse(day+"T00:00:00Z")+86400000-now)/1000)};
         if(kind==="chat"&&k==="chat:user:"+uid)remaining=max-current-1;
       }
       if(kind==="chat"){
@@ -142,7 +142,13 @@ async function firebase(env,kind,body) {
       if(["OPERATION_NOT_ALLOWED","ADMIN_ONLY_OPERATION","API_KEY_INVALID","INVALID_API_KEY","PROJECT_NOT_FOUND","CONFIGURATION_NOT_FOUND","TOO_MANY_ATTEMPTS_TRY_LATER","INVALID_REFRESH_TOKEN","TOKEN_EXPIRED","USER_DISABLED","USER_NOT_FOUND"].includes(message))reason=message;
     } catch {}
     console.warn("firebase_auth_status",res.status,reason);
-    return error("AUTH_"+reason,res.status===400&&refresh?401:503);
+    if(res.status===429||reason==="TOO_MANY_ATTEMPTS_TRY_LATER"){
+      const delay=Number(res.headers.get("Retry-After"));
+      const retry=Number.isSafeInteger(delay)&&delay>0?Math.min(delay,86400):900;
+      return Response.json({error:"AUTH_PROVIDER_LIMIT",scope:"firebase",retry_after:retry},{status:429,headers:{"Cache-Control":"no-store","Retry-After":String(retry)}});
+    }
+    const invalidSession=refresh&&["INVALID_REFRESH_TOKEN","TOKEN_EXPIRED","USER_DISABLED","USER_NOT_FOUND"].includes(reason);
+    return error("AUTH_"+reason,invalidSession?401:503);
   }
   const r=await res.json();
   const token=refresh?r.id_token:r.idToken, next=refresh?r.refresh_token:r.refreshToken;
@@ -199,7 +205,7 @@ async function geminiChat(config,input) {
 }
 export default {async fetch(req,env) {
   const path=new URL(req.url).pathname;
-  if(path==="/health"&&req.method==="GET")return json({service:"cubyte",ai_enabled:env.AI_ENABLED==="true"});
+  if(path==="/health"&&req.method==="GET")return json({service:"cubyte",revision:"auth-diagnostics-v2",ai_enabled:env.AI_ENABLED==="true",provider:env.AI_PROVIDER||"openai"});
   if(req.method!=="POST"||!["/guest","/refresh","/chat"].includes(path))return error("NOT_FOUND",404);
   const config=providerConfig(env);
   if(env.AI_ENABLED!=="true"||!env.FIREBASE_PROJECT_ID||!env.FIREBASE_WEB_API_KEY||!config)return error("AI_NOT_CONFIGURED",503);
@@ -211,6 +217,7 @@ export default {async fetch(req,env) {
   try {
     if(path!=="/chat"){
       const kind=path.slice(1);
+      if(kind==="refresh"&&(typeof body?.refresh_token!=="string"||!body.refresh_token||body.refresh_token.length>8192))return error("INVALID_REFRESH",400);
       const authQuota=await reserve(env,kind,"",ip);
       if(!authQuota.ok)return quotaDenied(authQuota);
       stage="FIREBASE";
