@@ -6,6 +6,7 @@ var summary: Label
 var name_editor: LineEdit
 var status: Label
 var purchase_buttons := {}
+var hire_button: Button
 signal changed
 
 func _ready() -> void:
@@ -21,6 +22,9 @@ func _ready() -> void:
 	name_editor.placeholder_text = "Company name"
 	column.add_child(name_editor)
 	column.add_child(UI.button("Save name", _rename))
+	column.add_child(UI.label("Recruitment", 20))
+	hire_button = UI.button("Hire NOVA · Analyst · 100 credits", _hire)
+	column.add_child(hire_button)
 	column.add_child(UI.label("Office upgrades", 20))
 	for id in Company.UPGRADES:
 		var item: Dictionary = Company.UPGRADES[id]
@@ -40,8 +44,10 @@ func refresh() -> void:
 	if not is_instance_valid(company):
 		return
 	var data: Dictionary = company.snapshot()
-	summary.text = str(data["company"]) + "\nCredits: " + str(int(data["credits"])) + "\nCompleted jobs: " + str(int(data["completed"]))
+	summary.text = str(data["company"]) + "\nLevel " + str(company.level()) + "\nCredits: " + str(int(data["credits"])) + "\nCompleted jobs: " + str(int(data["completed"]))
 	name_editor.text = str(data["company"])
+	hire_button.disabled = not company.can_hire()
+	hire_button.text = "NOVA · Hired" if "nova" in data["hires"] else "Hire NOVA · Level 2 · 100 credits"
 	for id in purchase_buttons:
 		var item: Dictionary = Company.UPGRADES[id]
 		var owned: bool = id in data["upgrades"]
@@ -65,3 +71,11 @@ func _buy(id: String) -> void:
 		changed.emit()
 	else:
 		status.text = "Purchase rejected."
+
+func _hire() -> void:
+	if company.hire_nova():
+		refresh()
+		status.text = "NOVA joined the office."
+		changed.emit()
+	else:
+		status.text = "Requires level 2 and 100 credits."
