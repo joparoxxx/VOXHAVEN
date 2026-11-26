@@ -21,10 +21,12 @@ jobs:
           chmod +x /tmp/godot/Godot*
           sudo mv /tmp/godot/Godot* /usr/local/bin/godot
           godot --version
+      - name: Install virtual display and Mesa
+        run: sudo apt-get update && sudo apt-get install -y xvfb xauth libgl1-mesa-dri
       - name: Import assets
         run: |
           set -o pipefail
-          godot --headless --editor --path . --import 2>&1 | tee import.log
+          LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a godot --display-driver x11 --rendering-method gl_compatibility --audio-driver Dummy --editor --path . --import 2>&1 | tee import.log
           if grep -E 'SCRIPT ERROR:|ERROR:' import.log; then exit 1; fi
       - name: Registry test
         run: |
@@ -34,7 +36,7 @@ jobs:
       - name: Scene smoke test
         run: |
           set -o pipefail
-          timeout 180 godot --headless --path . -- --smoke 2>&1 | tee smoke.log
+          LIBGL_ALWAYS_SOFTWARE=1 timeout 180 xvfb-run -a godot --display-driver x11 --rendering-method gl_compatibility --audio-driver Dummy --path . -- --smoke 2>&1 | tee smoke.log
           if grep -E 'SCRIPT ERROR:|ERROR:' smoke.log; then exit 1; fi
       - uses: actions/upload-artifact@v4
         if: always()
