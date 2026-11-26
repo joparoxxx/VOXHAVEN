@@ -16,6 +16,10 @@ var project_editor: LineEdit
 var plan_button: Button
 var watch_button: Button
 var project_tasks: Array = []
+var project_results := {}
+var project_engine: Object
+var reply_timer: Timer
+var review_button: Button
 var archives: Array = []
 const Writer = preload("res://core/artifact_writer.gd")
 var proposal := {}
@@ -70,6 +74,8 @@ func _ready() -> void:
 		column.add_child(project_row)
 		project_row.add_child(UI.button("New project", _new_project))
 		project_row.add_child(UI.button("History", _show_archive))
+		review_button = UI.button("Review outputs", _review_outputs)
+		column.add_child(review_button)
 	column.add_child(UI.label("Gemini · One request per selected Cubot (up to 4 per message). Group messages are shared with selected participants. Private chats are not included.", 16, UI.MUTED))
 	var row := GridContainer.new()
 	row.columns = 2
@@ -130,6 +136,10 @@ func _ready() -> void:
 	http.body_size_limit = Online.MAX_BODY
 	add_child(http)
 	http.request_completed.connect(_completed)
+	reply_timer = Timer.new()
+	reply_timer.one_shot = true
+	add_child(reply_timer)
+	reply_timer.timeout.connect(_continue_round)
 	_restore()
 	if meeting_mode:
 		project_editor.text = project_name
@@ -137,6 +147,8 @@ func _ready() -> void:
 
 func show_team(source: Object) -> void:
 	if busy:
+		if meeting_mode and not visible:
+			UI.show_modal(self)
 		return
 	console = source
 	members["nova"].visible = source.roster.is_active("nova")
@@ -241,7 +253,7 @@ func _completed(result: int, code: int, _headers: PackedStringArray, body: Packe
 			project_plan_ready.emit(plan)
 			return
 		_append(current, reply.left(2000))
-		_next()
+		reply_timer.start(3.0)
 		return
 	var action := Policy.proposal(reply)
 	if not action.is_empty():
@@ -289,9 +301,9 @@ func _wipe() -> void:
 func _finish(message: String) -> void:
 	busy = false
 	planning = false
+	if is_instance_valid(reply_timer):
+		reply_timer.stop()
 	_wipe()
-	if meeting_mode:
-		speaker_changed.emit("", "")
 	status.text = message
 	_refresh()
 
@@ -327,17 +339,18 @@ func _refresh() -> void:
 	if meeting_mode:
 		project_editor.editable = not busy
 		plan_button.disabled = busy or messages.is_empty()
+		review_button.disabled = busy or project_tasks.is_empty()
 		watch_button.disabled = not busy
 	for check in members.values():
 		check.disabled = busy
 
 func _save() -> bool:
 	if meeting_mode:
-		return store.write("team", JSON.stringify({"version":1,"messages":messages,"project":project_name,"tasks":project_tasks,"archives":archives}))
+		return store.write("team", JSON.stringify({"version":1,"messages":messages,"project":project_name,"tasks":project_tasks,"results":project_results,"archives":archives}))
 	return store.write("team", JSON.stringify({"version": 1, "messages": messages}))
 
 func _restore() -> void:
-	var saved: Dictionary = store.read("team", "", 524288)
+	var saved: Dictionary = store.read("team", "", 2097152 if meeting_mode else 524288)
 	if not saved.get("ok", false) or not saved.get("found", false):
 		return
 	var raw: Variant = JSON.parse_string(str(saved.get("value", "")))
@@ -350,6 +363,11 @@ func _restore() -> void:
 			for id in saved_tasks.slice(0,64):
 				if id is String and id.is_valid_int():
 					project_tasks.append(id)
+		var results: Variant = raw.get("results", {})
+		if results is Dictionary:
+			for id in project_tasks:
+				if results.get(id) is String:
+					project_results[id] = str(results[id]).left(100)
 		var history: Variant = raw.get("archives", [])
 		if history is Array:
 			for entry in history.slice(0,8):
@@ -390,6 +408,12 @@ func _approve() -> void:
 
 # Actual engine results only, not model-generated claims.
 func record_task_result(task: Dictionary) -> void:
+	if meeting_mode:
+		var id := str(task.get("id",""))
+		var state := str(task.get("status",""))
+		if id not in project_tasks or project_results.get(id,"") == state:
+			return
+		project_results[id] = state
 	var summary := "Task #" + str(task.get("id", "")) + " · " + str(task.get("robot_id", "")).to_upper() + " · " + str(task.get("tool", "")).to_upper() + " · " + str(task.get("status", ""))
 	if task.get("status") == "succeeded":
 		summary += ". File ready in Tasks & files."
@@ -407,11 +431,12 @@ func _new_project() -> void:
 	if busy:
 		return
 	if not messages.is_empty():
-		archives.append({"project":project_name,"messages":messages.duplicate(true)})
+		archives.append({"project":project_name,"messages":messages.duplicate(true),"results":project_results.duplicate(true)})
 		while archives.size() > 8:
 			archives.pop_front()
 	messages.clear()
 	project_tasks.clear()
+	project_results.clear()
 	project_name = "New project"
 	project_editor.text = project_name
 	_render()
@@ -450,7 +475,10 @@ func _draft_plan() -> void:
 	_next()
 
 func _validated_plan(reply: String) -> Array:
-	var raw: Variant = JSON.parse_string(reply.strip_edges())
+	var body := reply.strip_edges()
+	if body.begins_with("```json") and body.ends_with("```"):
+		body = body.substr(7, body.length() - 10).strip_edges()
+	var raw: Variant = JSON.parse_string(body)
 	if not raw is Dictionary or not raw.get("steps") is Array or raw["steps"].is_empty() or raw["steps"].size() > 8:
 		return []
 	var result := []
@@ -467,8 +495,31 @@ func register_project_tasks(ids: Array) -> void:
 		if str(id) not in project_tasks:
 			project_tasks.append(str(id))
 	while project_tasks.size() > 64:
-		project_tasks.pop_front()
+		project_results.erase(project_tasks.pop_front())
 	_append("office", "Player approved " + str(ids.size()) + " workflow steps. Actual results will follow.")
+	_refresh()
 
 func tracks_task(id: String) -> bool:
 	return id in project_tasks
+
+func _continue_round() -> void:
+	if busy:
+		_next()
+
+func set_project_engine(source: Object) -> void:
+	project_engine = source
+
+func _review_outputs() -> void:
+	if busy or not is_instance_valid(project_engine):
+		return
+	var counts := {}
+	var details := []
+	for id in project_tasks:
+		var task: Dictionary = project_engine.get_task(str(id))
+		var state := str(task.get("status","not found"))
+		counts[state] = int(counts.get(state,0)) + 1
+		details.append("#" + str(id) + " " + str(task.get("robot_id","")).to_upper() + " " + str(task.get("tool","")) + " " + state)
+	var overview := "Actual project task states: " + JSON.stringify(counts)
+	_append("office", overview + "\n" + "\n".join(details).left(1800))
+	input.text = "Review the actual project task states above, identify remaining work and recommend next steps."
+	status.text = "Actual results loaded. Send if you want an AI review; open Tasks & files for artifacts."
