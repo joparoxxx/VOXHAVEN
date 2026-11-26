@@ -9,6 +9,15 @@ const Roster = preload("res://core/robot_roster.gd")
 const AIConsole = preload("res://scenes/ai_console.gd")
 const TeamChat = preload("res://scenes/team_chat.gd")
 var team_chat: Window
+var meeting_room: Window
+var meeting_button: Button
+var meeting_active := false
+var meeting_arrivals: Array[int] = []
+var meeting_walker := -1
+var meeting_route: Array[Vector3] = []
+var meeting_plan_pending := false
+var meeting_speaker := -1
+var meeting_line_until := 0.0
 var team_task_id := ""
 const Workspace = preload("res://scenes/workspace.gd")
 var workspace: Window
@@ -384,6 +393,9 @@ func _build_ui() -> void:
 	var team_button := UI.button("Team Chat", _show_team, true)
 	team_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	workspace_row.add_child(team_button)
+	meeting_button = UI.button("Meeting", _call_meeting, true)
+	meeting_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	workspace_row.add_child(meeting_button)
 	var workspace_button := UI.button("Tasks & files", _show_workspace)
 	workspace_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	workspace_row.add_child(workspace_button)
@@ -476,6 +488,13 @@ func _build_ui() -> void:
 	team_chat.hide()
 	add_child(team_chat)
 	team_chat.connect("proposal_approved", _team_task)
+	meeting_room = TeamChat.new()
+	meeting_room.set("meeting_mode", true)
+	meeting_room.hide()
+	add_child(meeting_room)
+	meeting_room.connect("project_plan_ready", _review_meeting_plan)
+	meeting_room.connect("speaker_changed", _meeting_speaker_changed)
+	meeting_room.connect("meeting_ended", _end_meeting)
 	workspace = Workspace.new()
 	workspace.hide()
 	add_child(workspace)
@@ -499,7 +518,7 @@ func _build_ui() -> void:
 	_select_cubot(-1)
 
 func _select_cubot(index: int) -> void:
-	if busy or index < -1 or index >= ROBOT_IDS.size() or (index >= 0 and not roster.is_active(ROBOT_IDS[index])):
+	if busy or meeting_active or index < -1 or index >= ROBOT_IDS.size() or (index >= 0 and not roster.is_active(ROBOT_IDS[index])):
 		return
 	_end_conversation()
 	_stop_ambient()
@@ -520,11 +539,15 @@ func _select_cubot(index: int) -> void:
 	_refresh_binding()
 
 func _toggle_tools() -> void:
+	if meeting_active:
+		return
 	if selected < 0:
 		return
 	tools_panel.visible = not tools_panel.visible
 
 func _show_ai_settings() -> void:
+	if meeting_active:
+		return
 	if not busy:
 		ai_console.show_settings_for(ROBOT_IDS[selected] if selected >= 0 else "")
 
@@ -602,7 +625,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		point = event.position
 	else:
 		return
-	if busy:
+	if busy or meeting_active:
 		return
 	var nearest := -1
 	var distance := 42.0
@@ -618,7 +641,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	get_viewport().set_input_as_handled()
 
 func _queue(tool: String, payload: String, requested_by: String = "") -> void:
-	if busy or selected < 0:
+	if busy or meeting_active or selected < 0:
 		return
 	pending_id = engine.enqueue(ROBOT_IDS[selected], tool, payload, requested_by)
 	if pending_id.is_empty():
@@ -671,6 +694,9 @@ func _process(delta: float) -> void:
 	if face_update_wait >= 0.08:
 		face_update_wait = 0.0
 		_update_faces()
+	if meeting_active:
+		_update_meeting(delta)
+		return
 	if not busy:
 		_update_ambient(delta)
 		if selected >= 0 and not _modal_open():
@@ -719,6 +745,8 @@ func _update_faces() -> void:
 			face_states[i] = "idle"
 			face_until[i] = 0.0
 		var state: String = face_states[i]
+		if meeting_active and meeting_walker < 0 and meeting_arrivals.is_empty():
+			state = "talking" if i == meeting_speaker and face_clock < meeting_line_until else "listening"
 		if i in interaction_ids and not dialogue_lines.is_empty() and state == "idle":
 			state = "talking" if i == interaction_ids[Social.speaker(dialogue_turn)] else "listening"
 		if i == selected or state != "idle":
@@ -763,6 +791,8 @@ func _on_task_changed(task: Dictionary) -> void:
 	if not requester.is_empty():
 		route = requester.to_upper() + " → " + route
 	status.text = route + ": " + str(task["status"])
+	if is_instance_valid(meeting_room) and meeting_room.call("tracks_task", str(task["id"])) and task["status"] in ["succeeded","failed","cancelled","interrupted"]:
+		meeting_room.call("record_task_result", task)
 	if str(task["id"]) == team_task_id and task["status"] in ["succeeded", "failed", "cancelled", "interrupted"]:
 		team_chat.call("record_task_result", task)
 		team_task_id = ""
@@ -841,6 +871,8 @@ func _build_skill_dialog() -> void:
 	column.add_child(skill_status)
 
 func _show_skills() -> void:
+	if meeting_active:
+		return
 	if busy or selected < 0:
 		return
 	_refresh_skill_picker()
@@ -887,6 +919,8 @@ func _refresh_binding() -> void:
 		run_png.disabled = not engine.is_ready() or not roster.can_use(ROBOT_IDS[selected], "png")
 
 func _run_skill() -> void:
+	if meeting_active:
+		return
 	if busy or selected < 0:
 		return
 	var binding: Dictionary = skills.get_binding(ROBOT_IDS[selected])
@@ -975,6 +1009,8 @@ func _build_robot_dialog() -> void:
 	column.add_child(robot_dialog_status)
 
 func _show_robot_profile() -> void:
+	if meeting_active:
+		return
 	if busy or selected < 0:
 		return
 	var id: String = ROBOT_IDS[selected]
@@ -1021,6 +1057,8 @@ func _save_robot_profile() -> void:
 	robot_dialog_status.text = "Saved locally." if ok else "One or more settings failed to save. Reopen to check."
 
 func _delegate_task() -> void:
+	if meeting_active:
+		return
 	if busy or selected != 0:
 		return
 	var tool: String = Tools.IDS[manager_tool.selected]
@@ -1039,10 +1077,14 @@ func _delegate_task() -> void:
 	_queue(tool, ("" if tool == "png" else (input.text if tool == "text" else local_payload.text)), "atlas")
 
 func _show_ai() -> void:
+	if meeting_active:
+		return
 	if not busy and selected >= 0:
 		ai_console.show_for(ROBOT_IDS[selected])
 
 func _ai_task(robot_id: String, tool: String, payload: String, worker_id: String) -> void:
+	if meeting_active:
+		return
 	if busy or not roster.can_use(robot_id, tool) or not roster.can_use(worker_id, tool):
 		status.text = "AI tool request denied or worker busy."
 		return
@@ -1060,21 +1102,27 @@ func _ai_task(robot_id: String, tool: String, payload: String, worker_id: String
 	_queue(tool, payload, robot_id if worker_id != robot_id else "")
 
 func _show_team() -> void:
+	if meeting_active:
+		return
 	if not busy and not ai_console.online_busy:
 		team_chat.call("show_team", ai_console)
 
 func _create_selected_file() -> void:
+	if meeting_active:
+		return
 	if selected < 0 or busy or local_tool.selected < 0:
 		return
 	var tool: String = Tools.IDS[local_tool.selected]
 	_queue(tool, "" if tool == "png" else local_payload.text)
 
 func _show_workspace() -> void:
+	if meeting_active:
+		return
 	if not busy and not ai_console.online_busy:
 		workspace.call("show_workspace", engine)
 
 func _run_queued(id: String) -> void:
-	if busy:
+	if busy or meeting_active:
 		return
 	var task: Dictionary = engine.get_task(id)
 	if task.get("status") != "queued":
@@ -1221,6 +1269,8 @@ func _build_layout_dialog() -> void:
 	column.add_child(layout_status)
 
 func _show_build() -> void:
+	if meeting_active:
+		return
 	if busy or ai_console.online_busy:
 		return
 	_layout_robot_selected(robot_picker.selected)
@@ -1292,6 +1342,8 @@ func _apply_robot_color() -> void:
 		layout_status.text = "Robot color saved."
 
 func _run_workflow() -> void:
+	if meeting_active:
+		return
 	if busy or selected < 0 or skill_picker.selected < 0:
 		return
 	var payloads: Variant = JSON.parse_string(workflow_payloads.text)
@@ -1316,6 +1368,8 @@ func _notification(what: int) -> void:
 		return
 	if ai_console.visible:
 		ai_console.handle_back()
+	elif meeting_active:
+		meeting_room.call("_close")
 	elif is_instance_valid(team_chat) and team_chat.visible:
 		team_chat.call("_close")
 	elif is_instance_valid(workspace) and workspace.visible:
@@ -1395,6 +1449,8 @@ func _refresh_company_label() -> void:
 		company_label.text = "Lv " + str(company.level()) + " · " + str(int(data["credits"])) + " credits"
 
 func _show_company() -> void:
+	if meeting_active:
+		return
 	if not busy and not ai_console.online_busy:
 		company_hq.call("show_company", company)
 
@@ -1435,12 +1491,16 @@ func _refresh_decorations() -> void:
 			_box(decorations, Vector3(1.25 - line * 0.15, 0.035, 0.015), Vector3(3.35, 1.68 - line * 0.17, -5.85), Color("#6d8e99"))
 
 func _show_workflow_builder() -> void:
-	if not busy and not ai_console.online_busy:
+	if not busy and not meeting_active and not ai_console.online_busy:
+		meeting_plan_pending = false
 		workflow_builder.call("show_builder", engine, roster)
 
 func _start_team_workflow(ids: Array) -> void:
-	if busy or ids.is_empty():
+	if busy or meeting_active or ids.is_empty():
 		return
+	if meeting_plan_pending:
+		meeting_room.call("register_project_tasks", ids)
+		meeting_plan_pending = false
 	workflow_queue.clear()
 	for id in ids:
 		workflow_queue.append(str(id))
@@ -1460,7 +1520,7 @@ func _stop_ambient() -> void:
 	ambient_wait = 4.0
 
 func _modal_open() -> bool:
-	for window in [ai_console, team_chat, workspace, build_dialog, robot_dialog, skill_dialog, company_hq, workflow_builder, mission_board]:
+	for window in [ai_console, team_chat, workspace, build_dialog, robot_dialog, skill_dialog, company_hq, workflow_builder, mission_board, meeting_room]:
 		if is_instance_valid(window) and window.visible:
 			return true
 	return false
@@ -1664,12 +1724,16 @@ func _set_power_mode(value: bool) -> void:
 	Engine.max_fps = 30 if low_power else 60
 
 func _show_missions() -> void:
+	if meeting_active:
+		return
 	if busy or selected < 0 or not roster.is_active(ROBOT_IDS[selected]):
 		return
 	robot_dialog.hide()
 	mission_board.call("show_for", ROBOT_IDS[selected], progression, roster)
 
 func _start_mission(robot_id: String, tool: String, payload: String) -> void:
+	if meeting_active:
+		return
 	if busy or not progression.ready or not roster.is_active(robot_id) or not roster.can_use(robot_id, tool):
 		return
 	var mission: Dictionary = progression.current_mission(robot_id)
@@ -1688,3 +1752,115 @@ func _refresh_equipment(robot_id: String) -> void:
 	if tier >= 0:
 		equipment_markers[i].material_override.albedo_color = [Color("#a8c4d8"), Color("#70d7b1"), Color("#f5d998")][tier]
 	cubot_labels[i].text = robot_id.to_upper() + " · Lv " + str(progression.level(robot_id))
+
+func _call_meeting() -> void:
+	if busy or ai_console.online_busy or team_chat.get("busy") == true:
+		return
+	if meeting_active:
+		if meeting_walker >= 0 or not meeting_arrivals.is_empty():
+			_end_meeting()
+			return
+		meeting_room.call("show_team", ai_console)
+		return
+	if _modal_open():
+		return
+	_select_cubot(-1)
+	_end_conversation()
+	_stop_ambient()
+	tools_panel.hide()
+	meeting_active = true
+	meeting_button.text = "Cancel meeting"
+	meeting_arrivals.clear()
+	for i in range(robots.size()):
+		if roster.is_active(ROBOT_IDS[i]):
+			meeting_arrivals.append(i)
+	status.text = "Cubots are walking to the meeting room."
+	_next_meeting_arrival()
+
+func _next_meeting_arrival() -> void:
+	meeting_walker = -1
+	meeting_route.clear()
+	if meeting_arrivals.is_empty():
+		meeting_button.text = "Meeting"
+		status.text = "Team assembled. Enter the project briefing."
+		meeting_room.call("show_team", ai_console)
+		return
+	meeting_walker = meeting_arrivals.pop_front()
+	var plan := Navigation.new()
+	for i in range(desks.size()):
+		if desks[i].visible:
+			plan.block_box(desks[i].position, Vector2(1.35,0.85))
+	HQ.block_fixed(plan)
+	for i in range(robots.size()):
+		if i != meeting_walker and robots[i].visible:
+			plan.block_box(robots[i].position, Vector2(0.65,0.65))
+	meeting_route = plan.route(robots[meeting_walker].position, HQ.SEATS[meeting_walker])
+	if meeting_route.is_empty():
+		# A blocked seat must not teleport a robot or silently pretend attendance.
+		_end_meeting()
+		status.text = "Meeting blocked by an occupied route. Try again after the Cubots move."
+
+func _update_meeting(delta: float) -> void:
+	if meeting_walker >= 0:
+		var index := meeting_walker
+		if meeting_route.is_empty():
+			_next_meeting_arrival()
+			return
+		var point: Vector3 = meeting_route[0]
+		var robot := robots[index]
+		var before := robot.position
+		_face_target(index, point, delta)
+		robot.position = before.move_toward(point, delta * 3.0 * progression.speed_multiplier(ROBOT_IDS[index]))
+		if before.distance_to(robot.position) > 0.001:
+			wheels[index].rotate_x(-delta * 7.0)
+		if robot.position.distance_to(point) < 0.01:
+			meeting_route.pop_front()
+		return
+	for i in range(robots.size()):
+		if not robots[i].visible:
+			continue
+		var target: Vector3 = HQ.MEETING_CENTER
+		if meeting_speaker >= 0 and meeting_speaker != i and face_clock < meeting_line_until:
+			target = robots[meeting_speaker].position
+		_face_target(i, target, delta)
+		if i == meeting_speaker and face_clock < meeting_line_until:
+			body_pivots[i].rotation.x = 0.025 * sin(face_clock * 8.0)
+		else:
+			body_pivots[i].rotation.x = 0.0
+			speech_labels[i].hide()
+	if meeting_speaker >= 0 and face_clock >= meeting_line_until:
+		speech_labels[meeting_speaker].hide()
+		meeting_speaker = -1
+
+func _meeting_speaker_changed(id: String, line: String) -> void:
+	if not meeting_active:
+		return
+	for label in speech_labels:
+		label.hide()
+	meeting_speaker = ROBOT_IDS.find(id)
+	if meeting_speaker >= 0:
+		speech_labels[meeting_speaker].text = line
+		speech_labels[meeting_speaker].show()
+		meeting_line_until = face_clock + (20.0 if line == "Thinking…" else 4.0)
+		status.text = id.to_upper() + ": " + line.left(85)
+
+func _end_meeting() -> void:
+	meeting_active = false
+	meeting_arrivals.clear()
+	meeting_route.clear()
+	meeting_walker = -1
+	meeting_speaker = -1
+	for i in range(speech_labels.size()):
+		speech_labels[i].hide()
+		body_pivots[i].rotation.x = 0.0
+		mouths[i].scale = Vector3.ONE
+	meeting_button.text = "Meeting"
+	status.text = "Meeting ended. Cubots are available."
+	_stop_ambient()
+
+func _review_meeting_plan(plan: Array) -> void:
+	if busy or plan.is_empty():
+		return
+	_end_meeting()
+	meeting_plan_pending = true
+	workflow_builder.call("review_project", engine, roster, plan)
