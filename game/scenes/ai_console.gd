@@ -28,6 +28,7 @@ var personal_fields: VBoxContainer
 const Identity = preload("res://core/cubot_identity.gd")
 const UI = preload("res://ui/mobile_theme.gd")
 signal proposal_approved(robot_id: String, tool: String, payload: String, worker_id: String)
+signal voice_reply(id: String, line: String)
 var roster
 var skills
 var robot_id := ""
@@ -575,6 +576,7 @@ func _accept_response(response: String) -> bool:
 	while session.size() > 3:
 		session.pop_front()
 	session_turns[_session_id()] = session
+	voice_reply.emit(robot_id, visible_reply.left(240))
 	return history_store.save(robot_id, turns)
 
 func _confirm_clear_history() -> void:
