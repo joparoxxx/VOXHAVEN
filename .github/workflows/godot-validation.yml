@@ -47,8 +47,18 @@ jobs:
       - name: Scene smoke test
         run: |
           set -o pipefail
-          LIBGL_ALWAYS_SOFTWARE=1 timeout 180 xvfb-run -a godot --display-driver x11 --rendering-method gl_compatibility --audio-driver Dummy --path . -- --smoke 2>&1 | tee smoke.log
+          LIBGL_ALWAYS_SOFTWARE=1 timeout 180 xvfb-run -a godot --display-driver x11 --rendering-method gl_compatibility --audio-driver Dummy --path . res://scenes/asset_lab.tscn -- --smoke 2>&1 | tee smoke.log
           if grep -E 'SCRIPT ERROR:|ERROR:' smoke.log; then exit 1; fi
+      - name: Chunk mesh test
+        run: |
+          set -o pipefail
+          timeout 180 godot --headless --path . --script res://tests/chunk_mesh_test.gd 2>&1 | tee mesh.log
+          if grep -E 'SCRIPT ERROR:|ERROR:' mesh.log; then exit 1; fi
+      - name: World rendering smoke test
+        run: |
+          set -o pipefail
+          timeout 180 xvfb-run -a godot --display-driver x11 --rendering-method gl_compatibility --audio-driver Dummy --path . -- --world-smoke 2>&1 | tee world.log
+          if grep -E 'SCRIPT ERROR:|ERROR:' world.log; then exit 1; fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:

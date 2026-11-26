@@ -1,7 +1,7 @@
 config_version=5
 [application]
 config/name="Voxhaven"
-run/main_scene="res://scenes/asset_lab.tscn"
+run/main_scene="res://world/world_view.tscn"
 [autoload]
 Assets="*res://core/asset_registry.gd"
 [display]

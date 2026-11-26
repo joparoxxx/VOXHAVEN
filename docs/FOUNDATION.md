@@ -11,3 +11,6 @@ These checks must pass before claiming integration complete. Android export conf
 
 ## Voxel data foundation
 Seeded terrain, six biome classifications, caves, ores, chunk data and in-memory edits. Rendering, streaming, safe spawn, collision and persistence are not implemented yet. Run `godot --headless --path . --script res://tests/voxel_world_test.gd`.
+
+## World rendering prototype
+Main scene now opens the seeded world. Exposed-face indexed meshes, vertex-color placeholder materials, 3×3 chunk window, one synchronous chunk build per frame, trimesh collision, pan/zoom and queued edit rebuilds. Existing asset lab remains separately runnable. Texture atlas, background generation, persistence and mobile profiling remain pending. CI adds mesh and world smoke tests.
