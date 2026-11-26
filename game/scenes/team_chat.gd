@@ -8,6 +8,7 @@ const Tools = preload("res://core/tool_registry.gd")
 signal proposal_approved(robot_id: String, tool: String, payload: String, worker_id: String)
 signal project_plan_ready(steps: Array)
 signal speaker_changed(id: String, line: String)
+signal voice_reply(id: String, line: String)
 signal meeting_ended
 var meeting_mode := false
 var planning := false
@@ -275,8 +276,11 @@ func _completed(result: int, code: int, _headers: PackedStringArray, body: Packe
 
 func _append(sender: String, content: String) -> void:
 	messages.append({"sender": sender, "text": content})
-	if meeting_mode and sender in IDS:
-		speaker_changed.emit(sender, content.left(100))
+	if sender in IDS:
+		if meeting_mode:
+			speaker_changed.emit(sender, content.left(100))
+		else:
+			voice_reply.emit(sender, content.left(240))
 	while messages.size() > 36:
 		messages.pop_front()
 	_render()
