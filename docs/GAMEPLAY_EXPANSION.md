@@ -38,3 +38,10 @@ The approved concept is the art-direction reference, not an in-game render. The 
 Idle charging starts after 40 seconds of project inactivity when a Cubot is at or below 75% simulated charge. Full Cubots leave their own docks and resume ambient social activity. Player tasks and meetings take priority. Charge is simulated in the running scene, not a real battery or task execution restriction. Static grid validation covered three- and four-member movement between spawn, meeting and charging locations; runtime behavior and visual fidelity still require device validation.
 
 This commit requests the Godot CI headless regression and Android debug export pipeline on the development branch. Main remains unchanged.
+
+
+## HQ V3 — expanded office and chat redesign
+- Actual floor footprint 30 × 22 (formerly 18 × 12), with larger manager suite, production lanes, meeting area, lounge, lab and charging bay. Navigation limits and camera framing expanded; desk and meeting table widths increased while retaining Cubot-fit height. Charging pads 1.8 × 1.8. Imported Kenney CC0 furniture uses individual assets, not a scaled global scene.
+- Private, team and meeting chat share a mobile timeline: selectable plain-text bubbles, sender accents, compact header and composer, prompt-fill quick actions, collapsible participant/privacy controls and project controls. Existing permission, history, billing/context and approval logic retained. Quick actions do not send requests automatically.
+- Static route checks covered three and four workers moving between spawn, meeting and docking positions. Automated Godot tests now include the furniture imports and chat timeline. Device visuals, keyboard behavior and animation fit remain unverified. The edited Cubot GLB is optional and must be present at its documented path; otherwise procedural fallback remains active.
+- This commit requests headless validation and Android debug export; no merge to main.
