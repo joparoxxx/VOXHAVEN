@@ -2,6 +2,7 @@ extends SceneTree
 const Company = preload("res://core/company.gd")
 const EngineCore = preload("res://core/task_engine.gd")
 const Roster = preload("res://core/robot_roster.gd")
+const Progression = preload("res://core/cubot_progression.gd")
 var failures := 0
 
 func check(ok: bool, message: String) -> void:
@@ -65,5 +66,40 @@ func _run() -> void:
 	check(not nova_task.is_empty() and engine.run_task(nova_task), "analyst spreadsheet execution")
 	check(engine.get_task(nova_task).get("status") == "succeeded", "analyst artifact")
 	check(int(company_again.snapshot()["credits"]) == 25, "hire cost deducted once")
+	_test_missions(root_, engine, roster)
 	print("CUBYTE gameplay tests: ", failures, " failures")
 	quit(0 if failures == 0 else 1)
+
+func _test_missions(root_: String, engine: Object, roster: Object) -> void:
+	var path := root_ + "/progression"
+	var progression = Progression.new(path)
+	check(progression.ready, "mission store available")
+	check(progression.level("atlas") == 1, "starting Cubot level")
+	check(not progression.equip("atlas", 0), "locked equipment rejected")
+	var task_id: String = engine.enqueue("atlas", "text", "mission brief")
+	check(not task_id.is_empty(), "mission task queued")
+	check(progression.reward(engine.get_task(task_id)).is_empty(), "queued task has no XP")
+	check(engine.run_task(task_id), "mission file executed")
+	var result: Dictionary = progression.reward(engine.get_task(task_id))
+	check(result.get("xp") == 50 and result.get("mission") == "First Brief", "first mission reward")
+	check(progression.level("atlas") == 2, "mission levels Cubot")
+	check(progression.level("pixel") == 1, "XP isolated per Cubot")
+	check(progression.reward(engine.get_task(task_id)).is_empty(), "duplicate XP rejected")
+	check(progression.equip("atlas", 0), "equip unlocked badge")
+	check(is_equal_approx(progression.speed_multiplier("atlas"), 1.1), "movement buff")
+	check(not progression.equip("atlas", 1), "higher tier locked")
+	check(roster.set_permission("atlas", "md", true), "permit planning mission")
+	for i in range(2):
+		var next_id: String = engine.enqueue("atlas", "md", "# Plan " + str(i))
+		check(engine.run_task(next_id), "planning file created")
+		progression.reward(engine.get_task(next_id))
+	check(progression.snapshot("atlas")["mission"] == 2, "planning mission completed")
+	check(progression.equipment("atlas").size() == 2, "two equipment rewards")
+	check(progression.equip("atlas", 1), "equip planner module")
+	var restored = Progression.new(path)
+	check(restored.ready, "progress reload")
+	check(restored.snapshot("atlas")["xp"] == 130, "XP persisted")
+	check(is_equal_approx(restored.speed_multiplier("atlas"), 1.2), "loadout persisted")
+	check(restored.reward(engine.get_task(task_id)).is_empty(), "dedup persisted")
+	check(restored.equip("atlas", -1), "unequip")
+	check(is_equal_approx(restored.speed_multiplier("atlas"), 1.0), "base speed restored")
