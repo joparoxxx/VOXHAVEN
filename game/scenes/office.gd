@@ -120,7 +120,13 @@ var desk_picker: OptionButton
 var robot_picker: OptionButton
 var station_picker: OptionButton
 var color_picker: ColorPickerButton
+const CameraMath = preload("res://core/office_camera.gd")
 var camera_target := Vector3(0, 1, 0)
+var orbit_angles := Vector2.ZERO
+var orbit_distance := 16.5
+var back_wall: MeshInstance3D
+var left_wall: MeshInstance3D
+var touch_origin := Vector2.ZERO
 
 func _ready() -> void:
 	roster.set_nova_unlocked("nova" in company.snapshot()["hires"])
@@ -176,8 +182,9 @@ func _build_office() -> void:
 	camera.current = true
 	office_camera = camera
 	_box(self, Vector3(10, 0.15, 8), Vector3(0, -0.075, 0), Color("#727b85"))
-	_box(self, Vector3(10, 2, 0.15), Vector3(0, 1, -4), Color("#aab3bd"))
-	_box(self, Vector3(0.15, 2, 8), Vector3(-5, 1, 0), Color("#909ba6"))
+	back_wall = _box(self, Vector3(10, 2, 0.15), Vector3(0, 1, -4), Color("#aab3bd"))
+	left_wall = _box(self, Vector3(0.15, 2, 8), Vector3(-5, 1, 0), Color("#909ba6"))
+	_reset_camera()
 	for i in range(3):
 		var x := float(i - 1) * 2.7
 		var desk := Node3D.new()
@@ -464,7 +471,8 @@ func _show_ai_settings() -> void:
 		ai_console.show_settings_for(ROBOT_IDS[selected] if selected >= 0 else "")
 
 func _unhandled_input(event: InputEvent) -> void:
-	if busy or not is_instance_valid(office_camera):
+	if not is_instance_valid(office_camera) or _modal_open():
+		touch_points.clear()
 		return
 	var point := Vector2.ZERO
 	if event is InputEventScreenTouch:
@@ -472,9 +480,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event.pressed:
 			if touch_points.is_empty():
 				touch_moved = false
+				touch_origin = event.position
 			touch_points[event.index] = event.position
 			if touch_points.size() > 1:
 				touch_moved = true
+			return
+		if not touch_points.has(event.index):
 			return
 		point = event.position
 		touch_points.erase(event.index)
@@ -488,34 +499,52 @@ func _unhandled_input(event: InputEvent) -> void:
 			var keys := touch_points.keys()
 			var first: Vector2 = touch_points[keys[0]]
 			var second: Vector2 = touch_points[keys[1]]
-			var previous_distance := first.distance_to(second)
+			var old_center := (first + second) * 0.5
+			var old_distance := first.distance_to(second)
 			touch_points[event.index] = event.position
 			first = touch_points[keys[0]]
 			second = touch_points[keys[1]]
-			var next_distance := first.distance_to(second)
-			if previous_distance > 5.0 and next_distance > 5.0:
-				office_camera.size = clampf(office_camera.size * previous_distance / next_distance, 6.0, 18.0)
+			office_camera.size = CameraMath.pinch_size(office_camera.size, old_distance, first.distance_to(second))
+			_pan_camera((first + second) * 0.5 - old_center)
 			touch_moved = true
+		elif touch_points.size() == 1:
+			touch_points[event.index] = event.position
+			if touch_moved or event.position.distance_to(touch_origin) > 8.0:
+				touch_moved = true
+				_orbit_camera(event.relative)
 		else:
 			touch_points[event.index] = event.position
-			if event.relative.length() > 2.0 or touch_moved:
-				touch_moved = true
-				_pan_camera(event.relative)
+			touch_moved = true
+		get_viewport().set_input_as_handled()
+		return
+	elif event is InputEventMouseMotion:
+		if Time.get_ticks_msec() - last_touch < 350:
+			return
+		if event.button_mask & MOUSE_BUTTON_MASK_RIGHT:
+			_orbit_camera(event.relative)
+		elif event.button_mask & MOUSE_BUTTON_MASK_MIDDLE:
+			_pan_camera(event.relative)
+		else:
+			return
 		get_viewport().set_input_as_handled()
 		return
 	elif event is InputEventMouseButton and event.pressed:
 		if Time.get_ticks_msec() - last_touch < 350:
 			return
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			office_camera.size = maxf(6.0, office_camera.size - 1.0)
+			office_camera.size = maxf(CameraMath.MIN_ZOOM, office_camera.size - 1.0)
+			get_viewport().set_input_as_handled()
 			return
 		if event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			office_camera.size = minf(18.0, office_camera.size + 1.0)
+			office_camera.size = minf(CameraMath.MAX_ZOOM, office_camera.size + 1.0)
+			get_viewport().set_input_as_handled()
 			return
 		if event.button_index != MOUSE_BUTTON_LEFT:
 			return
 		point = event.position
 	else:
+		return
+	if busy:
 		return
 	var nearest := -1
 	var distance := 42.0
@@ -1122,6 +1151,15 @@ func _build_layout_dialog() -> void:
 	column.add_child(power_check)
 	column.add_child(UI.button("Zoom in", func(): office_camera.size = maxf(6.0, office_camera.size - 1.5)))
 	column.add_child(UI.button("Zoom out", func(): office_camera.size = minf(18.0, office_camera.size + 1.5)))
+	column.add_child(UI.label("Camera: one finger rotates, two fingers pan or pinch to zoom.", 16, UI.MUTED))
+	var camera_row := HBoxContainer.new()
+	column.add_child(camera_row)
+	var left := UI.button("Rotate left", func(): _rotate_camera_quarter(-1.0))
+	var right := UI.button("Rotate right", func(): _rotate_camera_quarter(1.0))
+	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	camera_row.add_child(left)
+	camera_row.add_child(right)
 	column.add_child(UI.button("Reset camera", func(): _reset_camera()))
 	layout_status = UI.label("", 16, UI.MUTED)
 	column.add_child(layout_status)
@@ -1249,14 +1287,34 @@ func _pan_camera(relative: Vector2) -> void:
 	var target := camera_target - right.normalized() * relative.x * scale_ - forward.normalized() * relative.y * scale_
 	target.x = clampf(target.x, -4.0, 4.0)
 	target.z = clampf(target.z, -3.0, 3.0)
-	office_camera.position += target - camera_target
 	camera_target = target
+	_apply_camera_pose()
 
 func _reset_camera() -> void:
 	office_camera.size = 13.8
-	office_camera.position = Vector3(8, 9, 12)
 	camera_target = Vector3(0, 1, 0)
+	var original := Vector3(8, 8, 12)
+	orbit_angles = CameraMath.angles(original)
+	orbit_distance = original.length()
+	_apply_camera_pose()
+
+func _orbit_camera(relative: Vector2) -> void:
+	orbit_angles = CameraMath.orbit_angles(orbit_angles, relative)
+	_apply_camera_pose()
+
+func _rotate_camera_quarter(direction: float) -> void:
+	orbit_angles.x = wrapf(orbit_angles.x + direction * PI / 2.0, -PI, PI)
+	_apply_camera_pose()
+
+func _apply_camera_pose() -> void:
+	var offset := CameraMath.offset(orbit_angles.x, orbit_angles.y, orbit_distance)
+	office_camera.position = camera_target + offset
 	office_camera.look_at(camera_target)
+	# Cut away the wall on the camera-facing side so the office stays visible.
+	if is_instance_valid(back_wall):
+		back_wall.visible = offset.z >= -0.5
+	if is_instance_valid(left_wall):
+		left_wall.visible = offset.x >= -0.5
 
 func _team_task(robot_id: String, tool: String, payload: String, worker_id: String) -> void:
 	var previous := pending_id
