@@ -1,0 +1,9 @@
+# Core infrastructure — stage 1
+
+The Godot project registers `Events` as a central event bus. The current typed topics are `task.changed`, `robot.profile_changed`, `skill.imported`, and `skill.assigned`. Payloads contain identifiers and state, not task content, personal memory, credentials, or artifact bytes. Existing local signals remain compatible with the office scene. Publishers run on the main thread.
+
+The native GDExtension now embeds SQLite 3.53.4 (official amalgamation, pinned SHA3-256). Its narrow storage interface uses prepared statements and disables dynamic SQL extension loading. The task engine stores its versioned task snapshot in `user://cubyte/tasks.sqlite3`. Existing task JSON is validated using the existing recovery rules and imported on first use. The original file remains untouched as a migration backup. Once a SQLite snapshot exists, it is authoritative. A database error stops the task engine rather than silently reverting to stale JSON. Builds without the native class retain legacy JSON support only when no database exists.
+
+This is a first migration step, not a normalized relational schema: task snapshots are still JSON values inside SQLite. Robot profiles, skill registry, and conversation history continue to use their existing JSON files. Artifacts remain files in app-private storage. No AI provider or API key handling was changed. Do not uninstall the app to upgrade if you need to preserve its data; debug signing differences may prevent an in-place update.
+
+CI exercises migration, database precedence, task interruption recovery, artifact generation, permissions, and lifecycle events. Actual Android migration still needs device verification. Future stages: migrate remaining stores, normalized task and artifact tables, indexes, event consumers, resource monitoring and task-board UI.

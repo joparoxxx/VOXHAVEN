@@ -1,0 +1,17 @@
+name = "cubyte-gateway"
+main = "src/index.mjs"
+compatibility_date = "2026-11-01"
+[vars]
+FIREBASE_PROJECT_ID = ""
+FIREBASE_WEB_API_KEY = ""
+OPENAI_MODEL = ""
+AI_ENABLED = "false"
+DAILY_GLOBAL_REQUESTS = "100"
+DAILY_USER_REQUESTS = "10"
+DAILY_IP_REQUESTS = "30"
+[[durable_objects.bindings]]
+name = "QUOTA"
+class_name = "Quota"
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Quota"]

@@ -1,16 +1,21 @@
 extends RefCounted
+const Bus = preload("res://core/event_bus.gd")
 ## Local profiles and explicit permissions. No model inference.
-const IDS := ["atlas", "pixel", "mesh"]
+const IDS := ["atlas", "pixel", "mesh", "nova"]
 const ToolRegistry = preload("res://core/tool_registry.gd")
 const TOOLS = ToolRegistry.IDS
 const DEFAULTS := {
 	"atlas": {"role": "Manager", "personality": "Organized", "specialization": "Coordination"},
 	"pixel": {"role": "Designer", "personality": "Creative", "specialization": "PNG"},
-	"mesh": {"role": "3D Artist", "personality": "Methodical", "specialization": "Geometry (future)"}
+	"mesh": {"role": "3D Artist", "personality": "Methodical", "specialization": "Geometry (future)"},
+	"nova": {"role": "Analyst", "personality": "Precise", "specialization": "Reports and structured data"}
 }
+const Snapshot = preload("res://core/snapshot_store.gd")
+var _storage
 var _root: String
 var _profiles := {}
 var _ready := false
+var _nova_unlocked := false
 
 func _init(root: String = "user://cubyte/robots") -> void:
 	_root = root
@@ -18,11 +23,20 @@ func _init(root: String = "user://cubyte/robots") -> void:
 		var profile: Dictionary = DEFAULTS[id].duplicate(true)
 		profile["id"] = id
 		profile["memory"] = ""
-		profile["permissions"] = {"text": true, "png": true}
+		profile["permissions"] = {}
+		for tool in TOOLS:
+			profile["permissions"][tool] = tool in ["text", "png"]
 		_profiles[id] = profile
-	_ready = DirAccess.make_dir_recursive_absolute(root) == OK
-	if _ready and FileAccess.file_exists(root + "/profiles.json"):
-		_ready = _load()
+	_storage = Snapshot.new(root, "profiles.json")
+	_ready = _storage.ready
+	if _ready:
+		var saved: Dictionary = _storage.read("profiles", "", 65536)
+		_ready = saved.get("ok", false)
+		if _ready and saved.get("found", false):
+			_ready = _load()
+			if _ready and _storage.native and saved.get("legacy", false):
+				_ready = _save()
+
 
 func is_ready() -> bool:
 	return _ready
@@ -49,10 +63,10 @@ func set_permission(id: String, tool: String, allowed: bool) -> bool:
 	return _set_profile_field(id, "permissions", permissions)
 
 func can_use(id: String, tool: String) -> bool:
-	return _ready and _profiles.has(id) and tool in TOOLS and _profiles[id]["permissions"].get(tool, false) == true
+	return _ready and is_active(id) and _profiles.has(id) and tool in TOOLS and _profiles[id]["permissions"].get(tool, false) == true
 
 func delegate(tool: String) -> String:
-	var candidates := ["pixel", "mesh"] if tool == "png" else ["mesh", "pixel"]
+	var candidates := ["pixel", "mesh"] if tool in ["png", "svg"] else (["nova", "mesh", "pixel"] if tool in ["csv", "xlsx", "json", "pdf", "docx"] else ["mesh", "pixel"])
 	for id in candidates:
 		if can_use(id, tool):
 			return id
@@ -66,31 +80,26 @@ func _set_profile_field(id: String, key: String, value: Variant) -> bool:
 	if not _save():
 		_profiles[id][key] = previous
 		return false
+	Bus.publish("robot.profile_changed", {"robot_id": id, "field": key})
 	return true
 
 func _save() -> bool:
-	var temp := _root + "/profiles.json.tmp"
-	var file := FileAccess.open(temp, FileAccess.WRITE)
-	if file == null:
-		return false
-	file.store_string(JSON.stringify({"version": 1, "profiles": _profiles}))
-	file.flush()
-	var ok := file.get_error() == OK
-	file.close()
-	return ok and DirAccess.rename_absolute(temp, _root + "/profiles.json") == OK
+	return _storage.write("profiles", JSON.stringify({"version": 1, "profiles": _profiles}))
 
 func _load() -> bool:
-	var file := FileAccess.open(_root + "/profiles.json", FileAccess.READ)
-	if file == null or file.get_length() > 65536:
+	var saved_data: Dictionary = _storage.read("profiles", "", 65536)
+	if not saved_data.get("ok", false) or not saved_data.get("found", false):
 		return false
-	var raw: Variant = JSON.parse_string(file.get_as_text())
-	file.close()
+	var raw: Variant = JSON.parse_string(str(saved_data.get("value", "")))
 	if not raw is Dictionary or raw.get("version") != 1 or not raw.get("profiles") is Dictionary:
 		return false
 	var saved: Dictionary = raw["profiles"]
 	var validated := {}
 	for id in IDS:
 		var p: Variant = saved.get(id)
+		if id == "nova" and not saved.has(id):
+			validated[id] = _profiles[id].duplicate(true)
+			continue
 		if not p is Dictionary or not p.get("memory") is String or not p.get("personality") is String or not p.get("permissions") is Dictionary:
 			return false
 		if p["memory"].to_utf8_buffer().size() > 4096 or p["personality"].strip_edges().is_empty() or p["personality"].to_utf8_buffer().size() > 128:
@@ -99,9 +108,24 @@ func _load() -> bool:
 		profile["memory"] = p["memory"]
 		profile["personality"] = p["personality"]
 		for tool in TOOLS:
+			if not p["permissions"].has(tool):
+				continue
 			if not p["permissions"].get(tool) is bool:
 				return false
 			profile["permissions"][tool] = p["permissions"][tool]
 		validated[id] = profile
 	_profiles = validated
 	return true
+
+func set_nova_unlocked(value: bool) -> void:
+	_nova_unlocked = value
+
+func is_active(id: String) -> bool:
+	return id in IDS and (id != "nova" or _nova_unlocked)
+
+func active_ids() -> Array[String]:
+	var result: Array[String] = []
+	for id in IDS:
+		if is_active(id):
+			result.append(id)
+	return result
