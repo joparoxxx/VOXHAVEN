@@ -1,4 +1,4 @@
-# Cubyte Asset Library
+# Voxhaven Asset Library
 
 ## KayKit
 Creator: Kay Lousberg

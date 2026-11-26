@@ -39,6 +39,11 @@ jobs:
           set -o pipefail
           timeout 180 godot --headless --path . --script res://tests/registry_test.gd 2>&1 | tee registry.log
           if grep -E 'SCRIPT ERROR:|ERROR:' registry.log; then exit 1; fi
+      - name: Voxel data test
+        run: |
+          set -o pipefail
+          timeout 180 godot --headless --path . --script res://tests/voxel_world_test.gd 2>&1 | tee voxel.log
+          if grep -E 'SCRIPT ERROR:|ERROR:' voxel.log; then exit 1; fi
       - name: Scene smoke test
         run: |
           set -o pipefail
