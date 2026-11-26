@@ -25,8 +25,54 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y xvfb xauth libgl1-mesa-dri mesa-vulkan-drivers libvulkan1
       - name: Configure software Vulkan
         run: |
-          test -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
-          echo 'VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json' >> "$GITHUB_ENV"
+          dpkg -L mesa-vulkan-drivers | grep -E '/lvp_icd[^/]*\.json
+          echo 'LIBGL_ALWAYS_SOFTWARE=1' >> "$GITHUB_ENV"
+      - name: Import assets
+        run: |
+          set -o pipefail
+          LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a godot --display-driver x11 --rendering-method gl_compatibility --audio-driver Dummy --editor --path . --import 2>&1 | tee import.log
+          if grep -E 'SCRIPT ERROR:|ERROR:' import.log; then exit 1; fi
+      - name: Registry test
+        run: |
+          set -o pipefail
+          timeout 180 godot --headless --path . --script res://tests/registry_test.gd 2>&1 | tee registry.log
+          if grep -E 'SCRIPT ERROR:|ERROR:' registry.log; then exit 1; fi
+      - name: Scene smoke test
+        run: |
+          set -o pipefail
+          LIBGL_ALWAYS_SOFTWARE=1 timeout 180 xvfb-run -a godot --display-driver x11 --rendering-method gl_compatibility --audio-driver Dummy --path . -- --smoke 2>&1 | tee smoke.log
+          if grep -E 'SCRIPT ERROR:|ERROR:' smoke.log; then exit 1; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: godot-validation-logs
+          path: '*.log'
+
+          icd=$(dpkg -L mesa-vulkan-drivers | grep -E '/lvp_icd[^/]*\.json
+          echo 'LIBGL_ALWAYS_SOFTWARE=1' >> "$GITHUB_ENV"
+      - name: Import assets
+        run: |
+          set -o pipefail
+          LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a godot --display-driver x11 --rendering-method gl_compatibility --audio-driver Dummy --editor --path . --import 2>&1 | tee import.log
+          if grep -E 'SCRIPT ERROR:|ERROR:' import.log; then exit 1; fi
+      - name: Registry test
+        run: |
+          set -o pipefail
+          timeout 180 godot --headless --path . --script res://tests/registry_test.gd 2>&1 | tee registry.log
+          if grep -E 'SCRIPT ERROR:|ERROR:' registry.log; then exit 1; fi
+      - name: Scene smoke test
+        run: |
+          set -o pipefail
+          LIBGL_ALWAYS_SOFTWARE=1 timeout 180 xvfb-run -a godot --display-driver x11 --rendering-method gl_compatibility --audio-driver Dummy --path . -- --smoke 2>&1 | tee smoke.log
+          if grep -E 'SCRIPT ERROR:|ERROR:' smoke.log; then exit 1; fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: godot-validation-logs
+          path: '*.log'
+ | head -n 1)
+          test -f "$icd"
+          echo "VK_ICD_FILENAMES=$icd" >> "$GITHUB_ENV"
           echo 'LIBGL_ALWAYS_SOFTWARE=1' >> "$GITHUB_ENV"
       - name: Import assets
         run: |
