@@ -64,6 +64,11 @@ jobs:
           set -o pipefail
           timeout 180 godot --headless --path . --script res://tests/terrain_decor_test.gd 2>&1 | tee decor.log
           if grep -E 'SCRIPT ERROR:|ERROR:' decor.log; then exit 1; fi
+      - name: Terrain atlas test
+        run: |
+          set -o pipefail
+          timeout 180 xvfb-run -a godot --rendering-method gl_compatibility --path . --script res://tests/terrain_atlas_test.gd 2>&1 | tee atlas.log
+          if grep -E 'SCRIPT ERROR:|ERROR:' atlas.log; then exit 1; fi
       - name: World rendering smoke test
         run: |
           set -o pipefail

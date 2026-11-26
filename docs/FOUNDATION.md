@@ -23,3 +23,6 @@ One worker generates CPU mesh arrays from a private seed/edit snapshot; main thr
 
 ## Forest decoration increment
 Existing KayKit tree scene is placed deterministically on forest grass with clear space, parented to streamed chunks. Trees are visual only, not yet harvestable or collidable. Individual scene instances are bounded by the chunk window; MultiMesh batching and terrain atlas mapping remain pending.
+
+## Terrain atlas increment
+Extract per-face UV corners from imported KayKit block meshes at startup and pass immutable lookup to chunk worker. Shared atlas material uses nearest filtering. Atlas test expects all 54 block faces. Visual orientation and atlas seams require screenshot/device verification.

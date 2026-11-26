@@ -6,10 +6,11 @@ const COLORS = [Color.TRANSPARENT,Color("638b42"),Color("79563b"),Color("85858a"
 static func build(world: World, chunk: Vector2i) -> ArrayMesh:
 	return upload(generate(world,chunk))
 
-static func generate(world: World, chunk: Vector2i) -> Array:
+static func generate(world: World, chunk: Vector2i, atlas: Dictionary = {}) -> Array:
 	var vertices := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var colors := PackedColorArray()
+	var uvs := PackedVector2Array()
 	var indices := PackedInt32Array()
 	var data := world.generate_chunk(chunk)
 	var origin := Vector3i(chunk.x * 16,0,chunk.y * 16)
@@ -37,10 +38,13 @@ static func generate(world: World, chunk: Vector2i) -> Array:
 					var c := center+u*0.5+v*0.5
 					var e := center-u*0.5+v*0.5
 					var base := vertices.size()
-					for vertex in [a,bb,c,e]:
-						vertices.append(vertex)
+					var corners: PackedVector2Array = atlas.get(Vector2i(block,DIRS.find(d)),PackedVector2Array())
+					var points := [a,bb,c,e]
+					for i in 4:
+						vertices.append(points[i])
 						normals.append(n)
-						colors.append(COLORS[block])
+						colors.append(Color.WHITE if corners.size()==4 else COLORS[block])
+						uvs.append(corners[i] if corners.size()==4 else Vector2.ZERO)
 					for index in [0,2,1,0,3,2]:
 						indices.append(base+index)
 					faces += 1
@@ -49,6 +53,7 @@ static func generate(world: World, chunk: Vector2i) -> Array:
 	arrays[Mesh.ARRAY_VERTEX] = vertices
 	arrays[Mesh.ARRAY_NORMAL] = normals
 	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_TEX_UV] = uvs
 	arrays[Mesh.ARRAY_INDEX] = indices
 	return arrays
 

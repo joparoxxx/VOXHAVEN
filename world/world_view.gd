@@ -3,6 +3,8 @@ const World = preload("res://world/voxel_world.gd")
 const Mesher = preload("res://world/chunk_mesh.gd")
 const Save = preload("res://world/world_save.gd")
 const Decor = preload("res://world/terrain_decor.gd")
+const Atlas = preload("res://world/terrain_atlas.gd")
+var atlas: Dictionary = {}
 const SAVE_PATH := "user://world.json"
 const RADIUS := 1
 var worker := Thread.new()
@@ -27,6 +29,9 @@ func _ready() -> void:
 		if restored != null: world = restored
 	var spawn := world.find_spawn()
 	focus = Vector3(spawn)+Vector3(0.5,1.0,0.5)
+	atlas = Atlas.build_lookup()
+	material.albedo_texture = load(Atlas.ROOT+"block_bits_texture.png")
+	material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
 	material.vertex_color_use_as_albedo = true
 	material.roughness = 1.0
 	var light := DirectionalLight3D.new()
@@ -110,8 +115,8 @@ func _process(_delta: float) -> void:
 		active_revision = revision
 		var snapshot := World.new(world.world_seed)
 		snapshot.edits = world.edits.duplicate()
-		if worker.start(Mesher.generate.bind(snapshot,active_key)) != OK:
-			build_chunk(active_key,Mesher.build(snapshot,active_key))
+		if worker.start(Mesher.generate.bind(snapshot,active_key,atlas)) != OK:
+			build_chunk(active_key,Mesher.upload(Mesher.generate(snapshot,active_key,atlas)))
 	if "--world-smoke" in OS.get_cmdline_user_args() and pending.is_empty() and not worker.is_started():
 		get_tree().quit(0 if chunks.size() == 9 else 1)
 
