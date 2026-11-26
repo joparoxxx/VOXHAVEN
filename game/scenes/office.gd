@@ -269,9 +269,10 @@ func _build_office() -> void:
 		_build_desk(desk, ROBOT_COLORS[i], i == 0)
 		_build_robot(HQ.SPAWNS[i], ROBOT_COLORS[i])
 	# Conference table with four clear docking positions and a shared project display.
-	_slab(self, Vector3(1.7,0.70,0.95), HQ.MEETING_CENTER + Vector3(0,0.40,0), Color("#36535d"),0.38)
-	_slab(self, Vector3(1.95,0.16,1.1), HQ.MEETING_CENTER + Vector3(0,0.83,0), Color("#e7e5df"),0.45)
-	var screen := _box(self, Vector3(0.95,0.07,0.48), HQ.MEETING_CENTER + Vector3(0,0.95,0), Color("#213e48"))
+	if _furniture(self,"Meeting_Table",HQ.MEETING_CENTER) == null:
+		_slab(self, Vector3(1.7,0.36,0.95), HQ.MEETING_CENTER + Vector3(0,0.18,0), Color("#36535d"),0.12)
+		_slab(self, Vector3(1.95,0.10,1.1), HQ.MEETING_CENTER + Vector3(0,0.41,0), Color("#e7e5df"),0.12)
+	var screen := _box(self, Vector3(0.95,0.04,0.48), HQ.MEETING_CENTER + Vector3(0,0.48,0), Color("#213e48"))
 	screen.material_override.emission_enabled = true
 	screen.material_override.emission = Color("#70d7b1")
 	screen.material_override.emission_energy_multiplier = 0.25
@@ -304,6 +305,18 @@ func _zone_label(value: String, pos: Vector3, color: Color) -> void:
 	add_child(label)
 
 func _build_desk(desk: Node3D, accent: Color, executive: bool) -> void:
+	var furniture := _furniture(desk,"Workstation",Vector3.ZERO)
+	if furniture == null:
+		_build_procedural_desk(desk,accent,executive)
+		return
+	if executive:
+		furniture.scale.x = 1.10
+	_furniture(desk,"Monitor",Vector3(0,0.44,-0.25))
+	_furniture(desk,"Keyboard",Vector3(0,0.44,0.38))
+	_furniture(desk,"Mouse",Vector3(0.40,0.44,0.38))
+	_glow(desk,Vector3(1.5,0.028,0.035),Vector3(0,0.39,0.51),accent)
+
+func _build_procedural_desk(desk: Node3D, accent: Color, executive: bool) -> void:
 	var width := 2.05 if executive else 1.8
 	_slab(desk,Vector3(width,0.15,0.9),Vector3(0,0.85,0),Color("#f0ede5"),0.38)
 	_slab(desk,Vector3(width-0.10,0.18,0.78),Vector3(0,0.69,0),Color("#b69c6c") if executive else Color("#456d72"),0.30)
@@ -1221,7 +1234,7 @@ func _rebuild_navigation() -> void:
 	for i in range(desks.size()):
 		if i == 3 and not roster.is_active("nova"):
 			continue
-		navigator.block_box(desks[i].position, Vector2(1.35, 0.85))
+		navigator.block_box(desks[i].position, HQ.DESK_CLEARANCE)
 	HQ.block_fixed(navigator)
 
 func _restore_layout() -> void:
@@ -1375,7 +1388,7 @@ func _move_desk(direction: int) -> void:
 	for robot in robots:
 		if not robot.visible:
 			continue
-		if absf(robot.position.x - desks[index].position.x) <= 1.35 and absf(robot.position.z - desks[index].position.z) <= 0.85:
+		if absf(robot.position.x - desks[index].position.x) <= HQ.DESK_CLEARANCE.x and absf(robot.position.z - desks[index].position.z) <= HQ.DESK_CLEARANCE.y:
 			desks[index].position.z = old
 			layout_status.text = "A robot occupies that space."
 			return
@@ -1549,21 +1562,16 @@ func _refresh_decorations() -> void:
 	var plant_x := -8.1 if decoration_slot == 0 else 8.1
 	var lamp_x := -plant_x
 	if "plant" in upgrades:
-		_box(decorations, Vector3(0.45, 0.45, 0.45), Vector3(plant_x, 0.225, -5.6), Color("#ad7952"))
-		_box(decorations, Vector3(0.65, 0.65, 0.65), Vector3(plant_x, 0.75, -5.6), Color("#468b58"))
+		_plant(decorations,Vector3(plant_x,0,-5.6),0.48)
 	if "lounge" in upgrades:
 		_slab(decorations,Vector3(0.55,0.32,0.55),HQ.LOUNGE+Vector3(0.65,0.19,0.64),Color("#d3ba85"),0.22)
 		_slab(decorations,Vector3(0.55,0.32,0.55),HQ.LOUNGE+Vector3(-0.65,0.19,0.64),Color("#d3ba85"),0.22)
 	if "lamp" in upgrades:
-		_box(decorations, Vector3(0.2, 0.2, 0.2), Vector3(lamp_x, 0.1, -5.6), Color("#586475"))
-		_box(decorations, Vector3(0.08, 1.5, 0.08), Vector3(lamp_x, 0.85, -5.6), Color("#738297"))
-		_box(decorations, Vector3(0.4, 0.18, 0.4), Vector3(lamp_x, 1.7, -5.6), Color("#f5d998"))
+		_furniture(decorations,"Floor_Lamp",Vector3(lamp_x,0,-5.6))
 	if "bookshelf" in upgrades:
-		_box(decorations, Vector3(0.25, 1.5, 1.25), Vector3(-8.75, 0.75, 4.3), Color("#66574e"))
-		for row in range(3):
-			_box(decorations, Vector3(0.28, 0.055, 1.2), Vector3(-8.61, 0.25 + row * 0.45, 4.3), Color("#d1a97d"))
-			for book in range(4):
-				_box(decorations, Vector3(0.16, 0.32, 0.19), Vector3(-8.57, 0.42 + row * 0.45, 3.88 + book * 0.23), Color.from_hsv(float(book + row) / 7.0, 0.45, 0.75))
+		var shelf := _furniture(decorations,"Storage_Shelf",Vector3(-8.75,0,4.3))
+		if shelf != null:
+			shelf.rotation.y = PI / 2.0
 	if "whiteboard" in upgrades:
 		_box(decorations, Vector3(2.2, 0.75, 0.06), Vector3(5.8, 0.72, -5.84), Color("#e5edef"))
 		for line in range(3):
@@ -1649,7 +1657,7 @@ func _update_ambient(delta: float) -> void:
 		var plan := Navigation.new()
 		for j in range(desks.size()):
 			if desks[j].visible:
-				plan.block_box(desks[j].position, Vector2(1.35, 0.85))
+				plan.block_box(desks[j].position, HQ.DESK_CLEARANCE)
 		HQ.block_fixed(plan)
 		for j in range(robots.size()):
 			if i != j and robots[j].visible:
@@ -1791,7 +1799,7 @@ func _move_desk_x(direction: int) -> void:
 	var old := desks[index].position.x
 	desks[index].position.x = clampf(old + direction * 0.25, center - 0.25, center + 0.25)
 	for robot in robots:
-		if robot.visible and absf(robot.position.x - desks[index].position.x) <= 1.35 and absf(robot.position.z - desks[index].position.z) <= 0.85:
+		if robot.visible and absf(robot.position.x - desks[index].position.x) <= HQ.DESK_CLEARANCE.x and absf(robot.position.z - desks[index].position.z) <= HQ.DESK_CLEARANCE.y:
 			desks[index].position.x = old
 			layout_status.text = "A robot occupies that space."
 			return
@@ -1879,7 +1887,7 @@ func _next_meeting_arrival() -> void:
 	var plan := Navigation.new()
 	for i in range(desks.size()):
 		if desks[i].visible:
-			plan.block_box(desks[i].position, Vector2(1.35,0.85))
+			plan.block_box(desks[i].position, HQ.DESK_CLEARANCE)
 	HQ.block_fixed(plan)
 	for i in range(robots.size()):
 		if i != meeting_walker and robots[i].visible:
@@ -1980,11 +1988,11 @@ func _build_charging_docks() -> void:
 		add_child(dock)
 		dock.position = HQ.DOCKS[i]
 		charge_docks.append(dock)
-		_slab(dock,Vector3(1.25,0.045,1.25),Vector3(0,0.025,0),Color("#36535d"),0.42)
-		_slab(dock,Vector3(1.08,0.022,1.08),Vector3(0,0.055,0),Color("#91b6ae"),0.40)
-		_glow(dock,Vector3(0.12,0.018,0.75),Vector3(-0.42,0.076,0),Color("#70d7b1"))
-		_glow(dock,Vector3(0.12,0.018,0.75),Vector3(0.42,0.076,0),Color("#70d7b1"))
-		var light := _box(dock, Vector3(0.9,0.035,0.10), Vector3(0,0.077,-0.51), Color("#70d7b1"))
+		_slab(dock,Vector3(1.50,0.045,1.50),Vector3(0,0.025,0),Color("#36535d"),0.18)
+		_slab(dock,Vector3(1.36,0.022,1.36),Vector3(0,0.055,0),Color("#91b6ae"),0.16)
+		_glow(dock,Vector3(0.12,0.018,0.75),Vector3(-0.60,0.076,0),Color("#70d7b1"))
+		_glow(dock,Vector3(0.12,0.018,0.75),Vector3(0.60,0.076,0),Color("#70d7b1"))
+		var light := _box(dock, Vector3(0.9,0.035,0.10), Vector3(0,0.077,-0.64), Color("#70d7b1"))
 		var material: StandardMaterial3D = light.material_override
 		material.emission_enabled = true
 		material.emission = Color("#70d7b1")
@@ -1992,7 +2000,7 @@ func _build_charging_docks() -> void:
 		charge_lights.append(light)
 		var label := Label3D.new()
 		label.text = ROBOT_IDS[i].to_upper() + " · DOCK"
-		label.position = Vector3(0,0.09,0.50)
+		label.position = Vector3(0,0.09,0.65)
 		label.rotation.x = -PI / 2.0
 		label.font_size = 28
 		label.pixel_size = 0.004
@@ -2040,7 +2048,7 @@ func _charge_path(index: int, target: Vector3) -> Array[Vector3]:
 	var plan := Navigation.new()
 	for j in range(desks.size()):
 		if desks[j].visible:
-			plan.block_box(desks[j].position, Vector2(1.35,0.85))
+			plan.block_box(desks[j].position, HQ.DESK_CLEARANCE)
 	HQ.block_fixed(plan)
 	for j in range(robots.size()):
 		if j != index and robots[j].visible:
@@ -2151,6 +2159,10 @@ func _build_wall_display(parent: Node3D, center: Vector3, accent: Color) -> void
 		_box(parent,Vector3(0.63-i*0.13,0.035,0.025),center+Vector3(-0.63,0.12-i*0.16,0.085),Color("#b8d7d2"))
 
 func _plant(parent: Node3D, center: Vector3, size_: float) -> void:
+	var imported := _furniture(parent,"Planter",center)
+	if imported != null:
+		imported.scale = Vector3.ONE * (size_ / 0.80)
+		return
 	_slab(parent,Vector3(size_*1.22,size_*0.42,size_*1.22),center+Vector3(0,size_*0.21,0),Color("#607b78"),size_*0.30)
 	_slab(parent,Vector3(size_,0.08,size_),center+Vector3(0,size_*0.43,0),Color("#594c3d"),size_*0.28)
 	for i in range(5):
@@ -2161,6 +2173,10 @@ func _plant(parent: Node3D, center: Vector3, size_: float) -> void:
 
 func _build_blueprint_lounge() -> void:
 	var p: Vector3 = HQ.LOUNGE
+	if _furniture(self,"Lounge_Sofa",p+Vector3(0,0,-0.50)) != null:
+		_furniture(self,"Coffee_Table",p+Vector3(0,0,0.42))
+		_zone_label("LOUNGE",p+Vector3(0,0.09,1.22),Color("#36535d"))
+		return
 	_slab(self,Vector3(1.95,0.03,1.95),p+Vector3(0,0.055,0),Color("#bda37b"),0.65)
 	_slab(self,Vector3(1.65,0.29,0.62),p+Vector3(0,0.20,-0.55),Color("#667c7a"),0.22)
 	_slab(self,Vector3(1.65,0.18,0.62),p+Vector3(0,0.42,-0.55),Color("#e5d8b8"),0.22)
@@ -2173,10 +2189,10 @@ func _build_blueprint_lounge() -> void:
 
 func _build_blueprint_lab() -> void:
 	var p: Vector3 = HQ.LAB
-	_slab(self,Vector3(1.35,0.50,0.95),p+Vector3(0,0.30,0),Color("#36535d"),0.28)
-	_slab(self,Vector3(1.45,0.14,1.05),p+Vector3(0,0.62,0),Color("#b9d2ca"),0.32)
-	_glow(self,Vector3(0.72,0.04,0.72),p+Vector3(0,0.71,0),Color("#70d7b1"))
-	var core := _glow(self,Vector3(0.33,0.33,0.33),p+Vector3(0,1.04,0),Color("#8de7dd"))
+	if _furniture(self,"Lab_Cabinet",p) == null:
+		_slab(self,Vector3(1.25,0.52,0.72),p+Vector3(0,0.26,0),Color("#36535d"),0.10)
+	_glow(self,Vector3(0.62,0.04,0.58),p+Vector3(0,0.54,0),Color("#70d7b1"))
+	var core := _glow(self,Vector3(0.28,0.28,0.28),p+Vector3(0,0.76,0),Color("#8de7dd"))
 	core.rotation.y = PI/4.0
 	core.rotation.z = PI/6.0
 
@@ -2233,3 +2249,26 @@ func _cubot_local_material(part: MeshInstance3D) -> StandardMaterial3D:
 	var mat := source.duplicate() as StandardMaterial3D if source != null else StandardMaterial3D.new()
 	part.material_override = mat
 	return mat
+
+# Preserve the imported root transform by placing each normalized GLB under a holder.
+var furniture_cache := {}
+
+func _furniture(parent: Node3D, asset_name: String, pos: Vector3) -> Node3D:
+	var scene: PackedScene = furniture_cache.get(asset_name) as PackedScene
+	if scene == null:
+		var path := "res://assets/furniture/" + asset_name + ".glb"
+		if not ResourceLoader.exists(path,"PackedScene"):
+			return null
+		scene = load(path) as PackedScene
+		if scene == null:
+			return null
+		furniture_cache[asset_name] = scene
+	var node := scene.instantiate() as Node3D
+	if node == null:
+		return null
+	var holder := Node3D.new()
+	holder.name = asset_name
+	parent.add_child(holder)
+	holder.position = pos
+	holder.add_child(node)
+	return holder

@@ -159,7 +159,7 @@ func _test_hq() -> void:
 		for i in range(count):
 			var nav := Navigation.new()
 			for j in range(count):
-				nav.block_box(HQ.DESKS[j], Vector2(1.35,0.85))
+				nav.block_box(HQ.DESKS[j], HQ.DESK_CLEARANCE)
 			HQ.block_fixed(nav)
 			for j in range(count):
 				if i != j:
@@ -168,7 +168,7 @@ func _test_hq() -> void:
 			positions[i] = HQ.SEATS[i]
 		var nav := Navigation.new()
 		for i in range(count):
-			nav.block_box(HQ.DESKS[i],Vector2(1.35,0.85))
+			nav.block_box(HQ.DESKS[i],HQ.DESK_CLEARANCE)
 		HQ.block_fixed(nav)
 		for i in range(count):
 			check(not nav.route(HQ.SEATS[i], HQ.work_target(i,HQ.DESKS[i])).is_empty(), "return to assigned workstation " + str(i))
@@ -193,7 +193,7 @@ func _test_charging_routes() -> void:
 			for i in range(count):
 				var nav := Navigation.new()
 				for j in range(count):
-					nav.block_box(HQ.DESKS[j],Vector2(1.35,0.85))
+					nav.block_box(HQ.DESKS[j],HQ.DESK_CLEARANCE)
 				HQ.block_fixed(nav)
 				for j in range(count):
 					if j != i:
@@ -203,7 +203,7 @@ func _test_charging_routes() -> void:
 			for i in range(count):
 				var nav := Navigation.new()
 				for j in range(count):
-					nav.block_box(HQ.DESKS[j],Vector2(1.35,0.85))
+					nav.block_box(HQ.DESKS[j],HQ.DESK_CLEARANCE)
 				HQ.block_fixed(nav)
 				for j in range(count):
 					if j != i:

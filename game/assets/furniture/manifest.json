@@ -1,0 +1,141 @@
+{
+  "source": "Kenney Furniture Kit",
+  "license": "CC0-1.0",
+  "url": "https://kenney.nl/assets/furniture-kit",
+  "mirror": "https://github.com/Hidencod/tge-assets/tree/main/packs/furniture-kit",
+  "reference": "Cubot-update.glb: 1.103 units tall, 0.781 eye center, about 0.38 hand center",
+  "assets": [
+    {
+      "name": "Workstation",
+      "sha": "bee703f3667f8d0a1019249fb4656c5fe2ec9a0f",
+      "src": "desk",
+      "dimensions_xyz": [
+        2.1,
+        0.44,
+        1.02
+      ],
+      "triangles": 198,
+      "source_sha": "8ca187070cd666239ab1d93dda2e98105f7de776"
+    },
+    {
+      "name": "Monitor",
+      "sha": "790241d21d1da59d936521c50aeaa788cbc94b9c",
+      "src": "computerscreen",
+      "dimensions_xyz": [
+        0.68,
+        0.5,
+        0.19
+      ],
+      "triangles": 72,
+      "source_sha": "c509093d35ee40bb6791dde9ad8e9de4bc3348dd"
+    },
+    {
+      "name": "Keyboard",
+      "sha": "9d4f76a4f2faec85aa9da8b0e45466240a76a91f",
+      "src": "computerkeyboard",
+      "dimensions_xyz": [
+        0.52,
+        0.035,
+        0.17
+      ],
+      "triangles": 32,
+      "source_sha": "77e5b4fc0d2d4c748173068f8ec325497f3c9011"
+    },
+    {
+      "name": "Mouse",
+      "sha": "4078b09340c66a32ece594b801616d521d348919",
+      "src": "computermouse",
+      "dimensions_xyz": [
+        0.1,
+        0.035,
+        0.15
+      ],
+      "triangles": 71,
+      "source_sha": "333b20fad5121354f165ca7f77b6f2e777691bbb"
+    },
+    {
+      "name": "Meeting_Table",
+      "sha": "a55743740ba6315f2cb3270df8bea0bc05a9ccaf",
+      "src": "tablecross",
+      "dimensions_xyz": [
+        2.25,
+        0.46,
+        1.05
+      ],
+      "triangles": 178,
+      "source_sha": "54b42407d0acd3c793f6e2553d4aec98944d3e6e"
+    },
+    {
+      "name": "Lounge_Sofa",
+      "sha": "d098e5713b64689f8f98d578d049aaadc5429a77",
+      "src": "loungedesignsofa",
+      "dimensions_xyz": [
+        1.85,
+        0.65,
+        0.72
+      ],
+      "triangles": 116,
+      "source_sha": "c3640d2b87a260fb893a54fba862212695afe4d6"
+    },
+    {
+      "name": "Coffee_Table",
+      "sha": "fae81a8eeb71c1ab0f44538e65023dac1563569f",
+      "src": "tablecoffeesquare",
+      "dimensions_xyz": [
+        0.72,
+        0.34,
+        0.65
+      ],
+      "triangles": 124,
+      "source_sha": "77fee3c7aa935677b9d12bf97c8f80a55818d93a"
+    },
+    {
+      "name": "Storage_Shelf",
+      "sha": "127aefca2e464872ffc9292984856bcf357ef5c7",
+      "src": "bookcaseopenlow",
+      "dimensions_xyz": [
+        1.25,
+        0.85,
+        0.28
+      ],
+      "triangles": 184,
+      "source_sha": "3daa396e11c843a5da87ab6547a279731e6eba58"
+    },
+    {
+      "name": "Planter",
+      "sha": "6da4a8c35521774bf297e050133a0bbca44fd630",
+      "src": "pottedplant",
+      "dimensions_xyz": [
+        0.76,
+        0.85,
+        0.7
+      ],
+      "triangles": 60,
+      "source_sha": "774d659a2d2be3f9af3fea78e13b2f250fdbb262"
+    },
+    {
+      "name": "Floor_Lamp",
+      "sha": "02dd50386ce0967a7f27176f29998563661834fa",
+      "src": "lampsquarefloor",
+      "dimensions_xyz": [
+        0.24,
+        1.38,
+        0.24
+      ],
+      "triangles": 60,
+      "source_sha": "844f5b03d2948cd54cd24cf7c4df5d7048cc99a9"
+    },
+    {
+      "name": "Lab_Cabinet",
+      "sha": "b6af6d83148134e9b452b21192cf237921a58eaa",
+      "src": "cabinetbeddrawer",
+      "dimensions_xyz": [
+        1.25,
+        0.52,
+        0.72
+      ],
+      "triangles": 182,
+      "source_sha": "3159b358756a150d874f82b0d06af0395554687e"
+    }
+  ]
+}
