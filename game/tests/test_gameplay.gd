@@ -3,6 +3,7 @@ const Company = preload("res://core/company.gd")
 const EngineCore = preload("res://core/task_engine.gd")
 const Roster = preload("res://core/robot_roster.gd")
 const Progression = preload("res://core/cubot_progression.gd")
+const Social = preload("res://core/robot_social.gd")
 var failures := 0
 
 func check(ok: bool, message: String) -> void:
@@ -67,6 +68,7 @@ func _run() -> void:
 	check(engine.get_task(nova_task).get("status") == "succeeded", "analyst artifact")
 	check(int(company_again.snapshot()["credits"]) == 25, "hire cost deducted once")
 	_test_missions(root_, engine, roster)
+	_test_social()
 	print("CUBYTE gameplay tests: ", failures, " failures")
 	quit(0 if failures == 0 else 1)
 
@@ -103,3 +105,19 @@ func _test_missions(root_: String, engine: Object, roster: Object) -> void:
 	check(restored.reward(engine.get_task(task_id)).is_empty(), "dedup persisted")
 	check(restored.equip("atlas", -1), "unequip")
 	check(is_equal_approx(restored.speed_multiplier("atlas"), 1.0), "base speed restored")
+
+func _test_social() -> void:
+	check(is_equal_approx(Social.heading(Vector3.ZERO, Vector3(0, 0, 1), 1.0), 0.0), "forward faces positive Z")
+	check(is_equal_approx(Social.heading(Vector3.ZERO, Vector3(1, 0, 0), 0.0), PI / 2.0), "turn toward right")
+	check(is_equal_approx(Social.heading(Vector3.ZERO, Vector3(-1, 0, 0), 0.0), -PI / 2.0), "turn toward left")
+	check(is_equal_approx(Social.heading(Vector3.ZERO, Vector3(0, 2, 0), 0.4), 0.4), "unchanged yaw without planar direction")
+	for first in Social.IDS:
+		for second in Social.IDS:
+			var lines := Social.dialogue(first, second)
+			if first == second:
+				check(lines.is_empty(), "no self conversation")
+			else:
+				check(lines.size() == 3, "three-turn conversation")
+				for line in lines:
+					check(not line.is_empty() and Social.duration(line) >= 2.4, "readable dialogue")
+	check(Social.speaker(0) == 0 and Social.speaker(1) == 1 and Social.speaker(2) == 0, "alternate speakers")
