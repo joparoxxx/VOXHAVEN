@@ -4,6 +4,7 @@ const DESKS := [Vector3(-4,0,-4.5),Vector3(-4,0,3.5),Vector3(0,0,3.5),Vector3(4,
 const SPAWNS := [Vector3(-4,0,-3),Vector3(-4,0,1.5),Vector3(0,0,1.5),Vector3(4,0,1.5)]
 const MEETING_CENTER := Vector3(3.5,0,-3.5)
 const SEATS := [Vector3(3.5,0,-5),Vector3(1.5,0,-3.5),Vector3(5.5,0,-3.5),Vector3(3.5,0,-2)]
+const DOCKS := [Vector3(-6,0,-3.5),Vector3(-4,0,5),Vector3(0,0,5),Vector3(4,0,5)]
 const LOUNGE := Vector3(-5.5,0,0)
 const LAB := Vector3(5.5,0,0)
 const PARTITIONS := [
