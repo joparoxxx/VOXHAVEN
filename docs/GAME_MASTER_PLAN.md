@@ -37,3 +37,6 @@ Crafting, enhancement up to +10, repair, rare material drops, set bonuses, techn
 7. Build approved modular walking GLB, animations and visible equipment; polish UI, sound and graphics.
 8. Run headless tests, smoke scene, Android APK build and physical-device profiling; report each separately.
 Do not claim features complete without verification. Use development branches for code; main contains approved planning reference. Update this plan when owner approves changes.
+
+## Approved structure asset direction
+Use existing KayKit Space Base Bits as the primary structure and environment asset pack: https://kaylousberg.itch.io/kaykit-space-base-bits . Do not generate new GLB models at this stage. Obtain original free pack, verify bundled license, inspect actual model inventory, scale, pivots, materials and Android performance before importing. Preserve original license and provenance. Proposed structures: Command Center, Charging Station, Storage Depot, Mining Station, Refinery, Cubot Factory, Equipment Workshop, Solar Generator, Fusion Reactor, Energy Bank, Power Relay, Research Lab, Radar Tower, Maintenance Bay, Recreation Hub. Target five upgrade levels with visual progression; map available assets to functions before commissioning missing models. Asset selection approved; binary import and testing pending.
