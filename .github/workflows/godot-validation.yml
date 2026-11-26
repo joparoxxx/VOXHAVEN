@@ -67,7 +67,7 @@ jobs:
       - name: Terrain atlas test
         run: |
           set -o pipefail
-          timeout 180 xvfb-run -a godot --rendering-method gl_compatibility --path . --script res://tests/terrain_atlas_test.gd 2>&1 | tee atlas.log
+          timeout 180 xvfb-run -a godot --display-driver x11 --rendering-method gl_compatibility --audio-driver Dummy --path . --script res://tests/terrain_atlas_test.gd 2>&1 | tee atlas.log
           if grep -E 'SCRIPT ERROR:|ERROR:' atlas.log; then exit 1; fi
       - name: World rendering smoke test
         run: |
