@@ -125,6 +125,18 @@ var dialogue_lines: Array[String] = []
 var dialogue_turn := 0
 var dialogue_elapsed := 0.0
 var ambient_partner := -1
+const CHARGE_IDLE_DELAY := 40.0
+const CHARGE_THRESHOLD := 75.0
+var charge_idle := 0.0
+var charge_retry := 0.0
+var charge_walker := -1
+var charge_departing := false
+var charge_route: Array[Vector3] = []
+var charge_docked := [false,false,false,false]
+var charge_percent := [70.0,70.0,70.0,70.0]
+var charge_docks: Array[Node3D] = []
+var charge_lights: Array[MeshInstance3D] = []
+var charge_labels: Array[Label3D] = []
 const Snapshot = preload("res://core/snapshot_store.gd")
 var layout_store = Snapshot.new("user://cubyte/office", "layout.json")
 var build_dialog: Window
@@ -249,6 +261,7 @@ func _build_office() -> void:
 	_box(self, Vector3(1.2,0.65,0.6), HQ.LAB + Vector3(0,0.35,0), Color("#36535d"))
 	_box(self, Vector3(1.25,0.12,0.65), HQ.LAB + Vector3(0,0.73,0), Color("#d0dcd8"))
 	_zone_label("UPGRADE LAB", HQ.LAB + Vector3(0,0.045,0.9), Color("#36535d"))
+	_build_charging_docks()
 	_refresh_hired_robot()
 	_restore_layout()
 	decorations = Node3D.new()
@@ -529,6 +542,9 @@ func _build_ui() -> void:
 func _select_cubot(index: int) -> void:
 	if busy or meeting_active or index < -1 or index >= ROBOT_IDS.size() or (index >= 0 and not roster.is_active(ROBOT_IDS[index])):
 		return
+	_interrupt_charging()
+	if index >= 0:
+		_wake_cubot(index)
 	_end_conversation()
 	_stop_ambient()
 	selected = index
@@ -659,6 +675,8 @@ func _queue(tool: String, payload: String, requested_by: String = "") -> void:
 	_start_queued()
 
 func _start_queued() -> void:
+	_interrupt_charging()
+	_wake_cubot(selected)
 	_end_conversation()
 	_stop_ambient()
 	var station: int = workstation_ids[selected]
@@ -688,6 +706,7 @@ func _cancel() -> void:
 		_reset()
 
 func _reset() -> void:
+	charge_idle = 0.0
 	busy = false
 	route.clear()
 	chat_button.disabled = false
@@ -700,6 +719,7 @@ func _reset() -> void:
 func _process(delta: float) -> void:
 	face_clock += delta
 	face_update_wait += delta
+	_update_charge_indicators(delta)
 	if face_update_wait >= 0.08:
 		face_update_wait = 0.0
 		_update_faces()
@@ -707,8 +727,10 @@ func _process(delta: float) -> void:
 		_update_meeting(delta)
 		return
 	if not busy:
+		if _update_charging(delta):
+			return
 		_update_ambient(delta)
-		if selected >= 0 and not _modal_open():
+		if selected >= 0 and not charge_docked[selected] and not _modal_open():
 			_face_target(selected, office_camera.position, delta)
 		return
 	var robot := robots[selected]
@@ -754,6 +776,8 @@ func _update_faces() -> void:
 			face_states[i] = "idle"
 			face_until[i] = 0.0
 		var state: String = face_states[i]
+		if charge_docked[i]:
+			state = "charging"
 		if meeting_active and meeting_walker < 0 and meeting_arrivals.is_empty():
 			state = "talking" if i == meeting_speaker and face_clock < meeting_line_until else "listening"
 		if i in interaction_ids and not dialogue_lines.is_empty() and state == "idle":
@@ -779,6 +803,9 @@ func _update_faces() -> void:
 			scale_y = 0.42
 		elif state == "error":
 			color = Color("#ff7777")
+		elif state == "charging":
+			scale_y = 0.12
+			color = Color("#70d7b1").lerp(Color("#36535d"), 0.25 + 0.20 * sin(face_clock * 2.2))
 		elif state == "sleeping":
 			scale_y = 0.12
 		elif state == "talking":
@@ -1531,6 +1558,8 @@ func _refresh_hired_robot() -> void:
 	roster.set_nova_unlocked(hired)
 	robots[3].visible = hired
 	desks[3].visible = hired
+	if charge_docks.size() == 4:
+		charge_docks[3].visible = hired
 
 func _stop_ambient() -> void:
 	ambient_robot = -1
@@ -1582,7 +1611,7 @@ func _update_ambient(delta: float) -> void:
 	for attempt in range(ROBOT_IDS.size()):
 		var i := ambient_cursor % ROBOT_IDS.size()
 		ambient_cursor += 1
-		if i == selected or not roster.is_active(ROBOT_IDS[i]) or face_states[i] != "idle":
+		if i == selected or charge_docked[i] or not roster.is_active(ROBOT_IDS[i]) or face_states[i] != "idle":
 			continue
 		var plan := Navigation.new()
 		for j in range(desks.size()):
@@ -1595,7 +1624,7 @@ func _update_ambient(delta: float) -> void:
 		# Approach one available colleague from a reachable side.
 		for offset in range(1, ROBOT_IDS.size()):
 			var j := (i + offset) % ROBOT_IDS.size()
-			if j == selected or not robots[j].visible or face_states[j] != "idle":
+			if j == selected or charge_docked[j] or not robots[j].visible or face_states[j] != "idle":
 				continue
 			var best: Array[Vector3] = []
 			for direction in [Vector3(1.5, 0, 0), Vector3(-1.5, 0, 0), Vector3(0, 0, 1.5), Vector3(0, 0, -1.5)]:
@@ -1793,6 +1822,9 @@ func _call_meeting() -> void:
 	_end_conversation()
 	_stop_ambient()
 	tools_panel.hide()
+	_interrupt_charging()
+	for i in range(robots.size()):
+		_wake_cubot(i)
 	meeting_active = true
 	meeting_button.text = "Cancel meeting"
 	meeting_arrivals.clear()
@@ -1874,6 +1906,7 @@ func _end_meeting() -> void:
 	if is_instance_valid(voice_player):
 		voice_player.stop()
 	meeting_active = false
+	charge_idle = 0.0
 	meeting_arrivals.clear()
 	meeting_route.clear()
 	meeting_walker = -1
@@ -1907,3 +1940,136 @@ func _play_voice_reply(id: String, line: String) -> void:
 		return
 	voice_player.stream = voice_synth.clip(id, CubotVoice.mood(line), line.length())
 	voice_player.play()
+
+func _build_charging_docks() -> void:
+	for i in range(HQ.DOCKS.size()):
+		var dock := Node3D.new()
+		add_child(dock)
+		dock.position = HQ.DOCKS[i]
+		charge_docks.append(dock)
+		_box(dock, Vector3(1.25,0.045,1.25), Vector3(0,0.025,0), Color("#36535d"))
+		_box(dock, Vector3(1.08,0.022,1.08), Vector3(0,0.055,0), Color("#91b6ae"))
+		var light := _box(dock, Vector3(0.9,0.035,0.10), Vector3(0,0.077,-0.51), Color("#70d7b1"))
+		var material: StandardMaterial3D = light.material_override
+		material.emission_enabled = true
+		material.emission = Color("#70d7b1")
+		material.emission_energy_multiplier = 0.05
+		charge_lights.append(light)
+		var label := Label3D.new()
+		label.text = ROBOT_IDS[i].to_upper() + " · DOCK"
+		label.position = Vector3(0,0.09,0.50)
+		label.rotation.x = -PI / 2.0
+		label.font_size = 28
+		label.pixel_size = 0.004
+		label.outline_size = 0
+		label.modulate = Color("#243a43")
+		dock.add_child(label)
+		charge_labels.append(label)
+	_zone_label("CHARGING BAY", Vector3(0,0.085,5.82), Color("#36535d"))
+
+func _interrupt_charging() -> void:
+	charge_idle = 0.0
+	charge_retry = 0.0
+	charge_walker = -1
+	charge_departing = false
+	charge_route.clear()
+
+func _wake_cubot(index: int) -> void:
+	if index < 0 or index >= charge_docked.size():
+		return
+	charge_docked[index] = false
+	last_active[index] = face_clock
+
+func _update_charge_indicators(delta: float) -> void:
+	for i in range(charge_docks.size()):
+		if not roster.is_active(ROBOT_IDS[i]):
+			continue
+		if charge_docked[i]:
+			charge_percent[i] = minf(100.0, float(charge_percent[i]) + delta * 6.0)
+		else:
+			var active: bool = (busy and selected == i) or meeting_active or ambient_robot == i or charge_walker == i or i in interaction_ids
+			var drain := 0.6 if active else 0.16
+			charge_percent[i] = maxf(10.0, float(charge_percent[i]) - delta * drain)
+		if face_update_wait < 0.08:
+			continue
+		var material: StandardMaterial3D = charge_lights[i].material_override
+		material.emission_energy_multiplier = (0.35 if charge_percent[i] >= 100.0 else 0.3 + 0.25 * sin(face_clock * 3.0)) if charge_docked[i] else 0.05
+		var dock_text := ("FULL · READY" if charge_percent[i] >= 100.0 else "CHARGING " + str(roundi(float(charge_percent[i]))) + "%") if charge_docked[i] else ROBOT_IDS[i].to_upper() + " · DOCK"
+		if charge_labels[i].text != dock_text:
+			charge_labels[i].text = dock_text
+		var robot_text := ROBOT_IDS[i].to_upper() + " · Lv " + str(progression.level(ROBOT_IDS[i])) + (" · " + str(roundi(float(charge_percent[i]))) + "%" if charge_docked[i] else "")
+		if cubot_labels[i].text != robot_text:
+			cubot_labels[i].text = robot_text
+
+func _charge_path(index: int, target: Vector3) -> Array[Vector3]:
+	var plan := Navigation.new()
+	for j in range(desks.size()):
+		if desks[j].visible:
+			plan.block_box(desks[j].position, Vector2(1.35,0.85))
+	HQ.block_fixed(plan)
+	for j in range(robots.size()):
+		if j != index and robots[j].visible:
+			plan.block_box(robots[j].position, Vector2(0.65,0.65))
+	return plan.route(robots[index].position, target)
+
+func _start_charge_walk(index: int, departing: bool, next_route: Array[Vector3]) -> void:
+	_end_conversation()
+	_stop_ambient()
+	charge_walker = index
+	charge_departing = departing
+	charge_route = next_route
+	if departing:
+		_wake_cubot(index)
+
+func _update_charging(delta: float) -> bool:
+	if _modal_open() or ai_console.online_busy or team_chat.get("busy") == true:
+		_interrupt_charging()
+		return false
+	charge_idle += delta
+	if charge_walker >= 0:
+		var i := charge_walker
+		if charge_route.is_empty():
+			if not charge_departing:
+				charge_docked[i] = true
+			charge_walker = -1
+			charge_departing = false
+			ambient_wait = 0.5
+			return true
+		var target: Vector3 = charge_route[0]
+		var robot := robots[i]
+		var before := robot.position
+		_face_target(i, target, delta)
+		robot.position = before.move_toward(target, delta * 2.1)
+		if robot.position.distance_to(before) > 0.001:
+			wheels[i].rotate_x(-delta * 5.5)
+		if robot.position.distance_to(target) < 0.01:
+			charge_route.pop_front()
+		return true
+	charge_retry -= delta
+	if charge_retry > 0.0:
+		return false
+	charge_retry = 2.0
+	# Full robots leave their docks and return to the social activity pool.
+	# Wait until the current social exchange has ended so bonding stays natural.
+	if not dialogue_lines.is_empty():
+		return false
+	for i in range(robots.size()):
+		if not roster.is_active(ROBOT_IDS[i]) or not charge_docked[i] or charge_percent[i] < 100.0:
+			continue
+		var exit_route := _charge_path(i, HQ.SPAWNS[i])
+		if not exit_route.is_empty():
+			_start_charge_walk(i, true, exit_route)
+			return true
+	if charge_idle < CHARGE_IDLE_DELAY:
+		return false
+	for i in range(robots.size()):
+		if i == selected or not roster.is_active(ROBOT_IDS[i]) or charge_docked[i] or charge_percent[i] > CHARGE_THRESHOLD:
+			continue
+		if robots[i].position.distance_to(HQ.DOCKS[i]) < 0.05:
+			charge_docked[i] = true
+			continue
+		var next_route := _charge_path(i, HQ.DOCKS[i])
+		if not next_route.is_empty():
+			_start_charge_walk(i, false, next_route)
+			return true
+	return false
