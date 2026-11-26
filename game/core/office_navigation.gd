@@ -1,8 +1,8 @@
 extends RefCounted
 ## Half-meter walk grid for the zoned HQ; furniture occupies cells.
 var grid := AStarGrid2D.new()
-const MIN_X := -13
-const MAX_X := 13
+const MIN_X := -17
+const MAX_X := 17
 const MIN_Z := -11
 const MAX_Z := 11
 func _init() -> void:
