@@ -4,6 +4,7 @@ const EngineCore = preload("res://core/task_engine.gd")
 const Roster = preload("res://core/robot_roster.gd")
 const Progression = preload("res://core/cubot_progression.gd")
 const Social = preload("res://core/robot_social.gd")
+const CameraMath = preload("res://core/office_camera.gd")
 var failures := 0
 
 func check(ok: bool, message: String) -> void:
@@ -69,6 +70,7 @@ func _run() -> void:
 	check(int(company_again.snapshot()["credits"]) == 25, "hire cost deducted once")
 	_test_missions(root_, engine, roster)
 	_test_social()
+	_test_camera()
 	print("CUBYTE gameplay tests: ", failures, " failures")
 	quit(0 if failures == 0 else 1)
 
@@ -121,3 +123,19 @@ func _test_social() -> void:
 				for line in lines:
 					check(not line.is_empty() and Social.duration(line) >= 2.4, "readable dialogue")
 	check(Social.speaker(0) == 0 and Social.speaker(1) == 1 and Social.speaker(2) == 0, "alternate speakers")
+
+func _test_camera() -> void:
+	var original := Vector3(8, 8, 12)
+	var initial := CameraMath.angles(original)
+	check(CameraMath.offset(initial.x, initial.y, original.length()).is_equal_approx(original), "camera reset reconstructs original angle")
+	var right := CameraMath.orbit_angles(initial, Vector2(100, 0))
+	check(not is_equal_approx(initial.x, right.x), "horizontal drag rotates camera")
+	var upper := CameraMath.orbit_angles(initial, Vector2(0, 10000))
+	check(is_equal_approx(upper.y, CameraMath.MAX_PITCH), "upper elevation bounded")
+	var lower := CameraMath.orbit_angles(initial, Vector2(0, -10000))
+	check(is_equal_approx(lower.y, CameraMath.MIN_PITCH), "lower elevation bounded")
+	var full_turn := CameraMath.orbit_angles(initial, Vector2(TAU / CameraMath.DRAG_SENSITIVITY, 0))
+	check(is_equal_approx(full_turn.x, initial.x), "full orbit returns to start")
+	check(is_equal_approx(CameraMath.pinch_size(12, 100, 200), 6.0), "pinch zoom in")
+	check(is_equal_approx(CameraMath.pinch_size(12, 200, 100), 18.0), "pinch zoom out bounded")
+	check(is_equal_approx(CameraMath.pinch_size(12, 0, 100), 12.0), "degenerate pinch ignored")
