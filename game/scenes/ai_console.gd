@@ -27,6 +27,7 @@ var forget_key_button: Button
 var personal_fields: VBoxContainer
 const Identity = preload("res://core/cubot_identity.gd")
 const UI = preload("res://ui/mobile_theme.gd")
+const ChatView = preload("res://ui/chat_timeline.gd")
 signal proposal_approved(robot_id: String, tool: String, payload: String, worker_id: String)
 signal voice_reply(id: String, line: String)
 var roster
@@ -51,7 +52,8 @@ var subtitle: Label
 var connection: Label
 var status: Label
 var settings_status: Label
-var transcript: RichTextLabel
+var transcript: ScrollContainer
+var quick_actions: HBoxContainer
 var prompt_box: TextEdit
 var model_editor: LineEdit
 var key_editor: LineEdit
@@ -82,36 +84,34 @@ func _ready() -> void:
 	UI.configure_modal(self)
 	close_requested.connect(hide)
 	var margin := MarginContainer.new()
-	margin.theme = UI.make_theme()
+	margin.theme = ChatView.chat_theme()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	for side in ["left", "top", "right", "bottom"]:
 		margin.add_theme_constant_override("margin_" + side, 12)
 	add_child(margin)
 	var root := VBoxContainer.new()
 	margin.add_child(root)
+	var header_card := PanelContainer.new()
+	root.add_child(header_card)
 	var header := HBoxContainer.new()
-	root.add_child(header)
+	header_card.add_child(header)
 	var identity_column := VBoxContainer.new()
 	identity_column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(identity_column)
 	heading = UI.label("Cubot", 25)
 	identity_column.add_child(heading)
-	subtitle = UI.label("OpenAI", 17, UI.MUTED)
+	subtitle = UI.label("Private conversation", 16, UI.MUTED)
 	identity_column.add_child(subtitle)
-	settings_button = UI.button("Settings", _show_settings)
+	settings_button = ChatView.compact_button("AI settings", _show_settings)
 	header.add_child(settings_button)
-	header.add_child(UI.button("Close", hide))
+	header.add_child(ChatView.compact_button("Back", hide))
 	chat_page = VBoxContainer.new()
 	chat_page.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	root.add_child(chat_page)
 	var chat_surface := PanelContainer.new()
 	chat_surface.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	chat_page.add_child(chat_surface)
-	transcript = RichTextLabel.new()
-	transcript.add_theme_font_size_override("normal_font_size", 20)
-	transcript.scroll_following = true
-	transcript.selection_enabled = true
-	transcript.custom_minimum_size.y = 75
+	transcript = ChatView.new()
 	chat_surface.add_child(transcript)
 	proposal_panel = PanelContainer.new()
 	chat_page.add_child(proposal_panel)
@@ -130,17 +130,23 @@ func _ready() -> void:
 	proposal_row.add_child(reject_button)
 	proposal_row.add_child(approve_button)
 	proposal_panel.hide()
+	quick_actions = HBoxContainer.new()
+	chat_page.add_child(quick_actions)
+	for item in [["Update","Give me a concise progress update."],["Plan","Create a practical task plan."],["Help","What can you help me with?"]]:
+		var chip := ChatView.compact_button(str(item[0]),_fill_prompt.bind(str(item[1])))
+		chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		quick_actions.add_child(chip)
 	var composer := HBoxContainer.new()
 	chat_page.add_child(composer)
 	prompt_box = TextEdit.new()
 	prompt_box.placeholder_text = "Message this Cubot..."
 	prompt_box.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
-	prompt_box.custom_minimum_size.y = 92
+	prompt_box.custom_minimum_size.y = 80
 	prompt_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	composer.add_child(prompt_box)
-	ask_button = UI.button("Send", _ask, true)
+	ask_button = ChatView.compact_button("Send", _ask, true)
 	composer.add_child(ask_button)
-	cancel_button = UI.button("Stop", _cancel)
+	cancel_button = ChatView.compact_button("Stop", _cancel)
 	composer.add_child(cancel_button)
 	status = UI.label("", 16, UI.MUTED)
 	chat_page.add_child(status)
@@ -281,10 +287,10 @@ func show_for(id: String) -> void:
 	heading.text = id.to_upper()
 	subtitle.text = "Cubot  /  " + str(profile.get("role", ""))
 	title = "Chat | " + id.to_upper()
-	status.text = "Ask your Cubot a question."
+	status.text = "Ready · private conversation"
 	_draw_history()
 	_show_chat()
-	UI.show_modal(self)
+	UI.show_modal(self,0.99)
 
 func show_settings_for(id: String) -> void:
 	if online_busy:
@@ -298,7 +304,7 @@ func show_settings_for(id: String) -> void:
 		heading.text = "AI settings"
 		subtitle.text = "AI access · Shared by all Cubots"
 		title = "CUBYTE | AI settings"
-		UI.show_modal(self)
+		UI.show_modal(self,0.99)
 	_show_settings()
 
 func _show_settings() -> void:
@@ -603,21 +609,17 @@ func _clear_history() -> void:
 func _draw_history() -> void:
 	if not is_instance_valid(transcript):
 		return
-	transcript.clear()
+	transcript.call("clear")
 	var turns: Array = histories.get(robot_id, [])
 	if turns.is_empty() and not online_busy:
-		transcript.add_text("Start a conversation with " + robot_id.to_upper() + ".\n")
+		transcript.call("add_message","office","Start a private conversation with " + robot_id.to_upper() + ".")
 	for turn in turns:
-		transcript.push_color(UI.ACCENT)
-		transcript.add_text("YOU\n")
-		transcript.pop()
-		transcript.add_text(str(turn["user"]) + "\n\n")
-		transcript.push_color(Color("#a8d9be"))
-		transcript.add_text(robot_id.to_upper() + "\n")
-		transcript.pop()
-		transcript.add_text(str(turn["assistant"]) + "\n\n")
+		transcript.call("add_message","you",str(turn["user"]))
+		transcript.call("add_message",robot_id,str(turn["assistant"]))
 	if online_busy and online_operation == "ask":
-		transcript.add_text("YOU\n" + question + "\n\n" + robot_id.to_upper() + " is thinking...")
+		transcript.call("add_message","you",question)
+		transcript.call("add_message",robot_id,"Thinking…")
+	transcript.call("to_bottom")
 	proposal_panel.visible = not pending.is_empty()
 	proposal_text.clear()
 	if not pending.is_empty():
@@ -659,6 +661,8 @@ func _update_buttons() -> void:
 	clear_history_button.disabled = online_busy or robot_id.is_empty()
 	back_button.disabled = online_busy
 	prompt_box.editable = not online_busy
+	for chip in quick_actions.get_children():
+		chip.disabled = online_busy or not pending.is_empty()
 	cancel_button.visible = online_busy and online_operation == "ask"
 	approve_button.disabled = online_busy or pending.is_empty()
 	reject_button.disabled = online_busy
@@ -773,3 +777,8 @@ func handle_back() -> void:
 		_show_chat()
 	else:
 		hide()
+
+func _fill_prompt(value: String) -> void:
+	if not online_busy and pending.is_empty():
+		prompt_box.text = value
+		prompt_box.grab_focus()

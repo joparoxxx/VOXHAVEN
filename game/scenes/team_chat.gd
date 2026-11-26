@@ -3,6 +3,7 @@ extends Window
 const Online = preload("res://core/online_ai.gd")
 const Identity = preload("res://core/cubot_identity.gd")
 const UI = preload("res://ui/mobile_theme.gd")
+const ChatView = preload("res://ui/chat_timeline.gd")
 const Policy = preload("res://core/ai_policy.gd")
 const Tools = preload("res://core/tool_registry.gd")
 signal proposal_approved(robot_id: String, tool: String, payload: String, worker_id: String)
@@ -32,7 +33,10 @@ var approve: Button
 var reject: Button
 const IDS := ["atlas", "pixel", "mesh", "nova"]
 var console: Object
-var transcript: RichTextLabel
+var transcript: ScrollContainer
+var quick_actions: HBoxContainer
+var participants_panel: VBoxContainer
+var participant_toggle: Button
 var input: TextEdit
 var status: Label
 var send: Button
@@ -58,14 +62,21 @@ func _ready() -> void:
 	size = Vector2i(450, 860)
 	close_requested.connect(_close)
 	var margin := MarginContainer.new()
-	margin.theme = UI.make_theme()
+	margin.theme = ChatView.chat_theme()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	for side in ["left", "right", "top", "bottom"]:
 		margin.add_theme_constant_override("margin_" + side, 12)
 	add_child(margin)
 	var column := VBoxContainer.new()
 	margin.add_child(column)
-	column.add_child(UI.label("Project meeting" if meeting_mode else "Team Chat", 24))
+	var header := HBoxContainer.new()
+	column.add_child(header)
+	var header_text := VBoxContainer.new()
+	header_text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	header.add_child(header_text)
+	header_text.add_child(UI.label("Project meeting" if meeting_mode else "Team chat",24))
+	header_text.add_child(UI.label("ATLAS · project manager" if meeting_mode else "Shared Cubot conversation",15,UI.MUTED))
+	header.add_child(ChatView.compact_button("Back",_close))
 	if meeting_mode:
 		project_editor = LineEdit.new()
 		project_editor.max_length = 64
@@ -73,27 +84,32 @@ func _ready() -> void:
 		column.add_child(project_editor)
 		var project_row := HBoxContainer.new()
 		column.add_child(project_row)
-		project_row.add_child(UI.button("New project", _new_project))
-		project_row.add_child(UI.button("History", _show_archive))
-		review_button = UI.button("Review outputs", _review_outputs)
-		column.add_child(review_button)
-	column.add_child(UI.label("Gemini · One request per selected Cubot (up to 4 per message). Group messages are shared with selected participants. Private chats are not included.", 16, UI.MUTED))
+		project_row.add_child(ChatView.compact_button("New", _new_project))
+		project_row.add_child(ChatView.compact_button("History", _show_archive))
+		review_button = ChatView.compact_button("Outputs", _review_outputs)
+		project_row.add_child(review_button)
+	participant_toggle = ChatView.compact_button("Participants & privacy",_toggle_participants)
+	column.add_child(participant_toggle)
+	participants_panel = VBoxContainer.new()
+	column.add_child(participants_panel)
+	participants_panel.add_child(UI.label("Gemini · one request per selected Cubot. Shared team messages only; private chats are not included.",15,UI.MUTED))
 	var row := GridContainer.new()
 	row.columns = 2
-	column.add_child(row)
+	participants_panel.add_child(row)
 	for id in IDS:
 		var check := CheckBox.new()
-		check.text = id.to_upper()
+		check.text = id.to_upper() + (" · Manager" if id == "atlas" else "")
 		check.button_pressed = true
 		check.visible = id != "nova"
 		check.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(check)
 		members[id] = check
-	transcript = RichTextLabel.new()
-	transcript.selection_enabled = true
-	transcript.scroll_following = true
-	transcript.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	column.add_child(transcript)
+	participants_panel.hide()
+	var chat_surface := PanelContainer.new()
+	chat_surface.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	column.add_child(chat_surface)
+	transcript = ChatView.new()
+	chat_surface.add_child(transcript)
 	proposal_box = VBoxContainer.new()
 	column.add_child(proposal_box)
 	proposal_label = RichTextLabel.new()
@@ -108,28 +124,37 @@ func _ready() -> void:
 	approval_row.add_child(approve)
 	approval_row.add_child(reject)
 	proposal_box.hide()
+	quick_actions = HBoxContainer.new()
+	column.add_child(quick_actions)
+	for item in [["Brief","Let us discuss the project requirements."],["Update","Summarize progress and any blockers."],["Next steps","Recommend the next concrete steps."]]:
+		var chip := ChatView.compact_button(str(item[0]),_fill_prompt.bind(str(item[1])))
+		chip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		quick_actions.add_child(chip)
 	input = TextEdit.new()
 	input.placeholder_text = "Message the team or @NOVA (if hired)"
 	input.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
-	input.custom_minimum_size.y = 100
+	input.custom_minimum_size.y = 76
 	column.add_child(input)
 	status = UI.label("Select participants and send a message.", 16, UI.MUTED)
 	column.add_child(status)
 	var actions := HBoxContainer.new()
 	column.add_child(actions)
-	send = UI.button("Send", _start, true)
+	send = ChatView.compact_button("Send", _start, true)
 	send.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	actions.add_child(send)
-	stop = UI.button("Stop", _stop)
+	stop = ChatView.compact_button("Stop", _stop)
 	actions.add_child(stop)
-	actions.add_child(UI.button("Close", _close))
+	
 	if meeting_mode:
-		plan_button = UI.button("ATLAS: draft project plan", _draft_plan, true)
-		column.add_child(plan_button)
-		watch_button = UI.button("Watch 3D meeting", hide)
-		column.add_child(watch_button)
+		var meeting_actions := HBoxContainer.new()
+		column.add_child(meeting_actions)
+		plan_button = ChatView.compact_button("ATLAS: Draft plan", _draft_plan, true)
+		plan_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		meeting_actions.add_child(plan_button)
+		watch_button = ChatView.compact_button("Watch 3D", hide)
+		meeting_actions.add_child(watch_button)
 	else:
-		column.add_child(UI.button("Clear team conversation", _clear))
+		participants_panel.add_child(ChatView.compact_button("Clear conversation", _clear))
 	http = HTTPRequest.new()
 	http.timeout = 60
 	http.use_threads = true
@@ -149,11 +174,11 @@ func _ready() -> void:
 func show_team(source: Object) -> void:
 	if busy:
 		if meeting_mode and not visible:
-			UI.show_modal(self)
+			UI.show_modal(self,0.99)
 		return
 	console = source
 	members["nova"].visible = source.roster.is_active("nova")
-	UI.show_modal(self)
+	UI.show_modal(self,0.99)
 	_refresh()
 
 func _start() -> void:
@@ -288,12 +313,12 @@ func _append(sender: String, content: String) -> void:
 		status.text = "Local team history could not be saved."
 
 func _render() -> void:
-	transcript.clear()
+	transcript.call("clear")
+	if messages.is_empty():
+		transcript.call("add_message","office","Enter a briefing or ask the selected Cubots a question.")
 	for entry in messages:
-		transcript.push_color(UI.ACCENT if entry["sender"] == "you" else Color("#a8d9be"))
-		transcript.add_text(str(entry["sender"]).to_upper() + "\n")
-		transcript.pop()
-		transcript.add_text(str(entry["text"]) + "\n\n")
+		transcript.call("add_message",str(entry["sender"]),str(entry["text"]))
+	transcript.call("to_bottom")
 
 func _wipe() -> void:
 	key = ""
@@ -320,7 +345,7 @@ func _clear() -> void:
 	if not busy:
 		_reject()
 		messages.clear()
-		transcript.clear()
+		transcript.call("clear")
 		if not _save():
 			status.text = "Could not clear stored history."
 
@@ -340,6 +365,9 @@ func _refresh() -> void:
 	if not proposal.is_empty():
 		proposal_label.add_text(proposal_owner.to_upper() + " → " + proposal_worker.to_upper() + " · " + str(proposal["tool"]).to_upper() + "\n" + str(proposal["payload"]))
 	input.editable = not busy
+	stop.visible = busy
+	for chip in quick_actions.get_children():
+		chip.disabled = busy or not proposal.is_empty()
 	if meeting_mode:
 		project_editor.editable = not busy
 		plan_button.disabled = busy or messages.is_empty()
@@ -451,13 +479,14 @@ func _new_project() -> void:
 func _show_archive() -> void:
 	if busy:
 		return
-	transcript.clear()
+	transcript.call("clear")
+	if archives.is_empty():
+		transcript.call("add_message","office","No archived meetings yet.")
 	for entry in archives:
-		transcript.add_text(str(entry["project"]) + "\n")
+		transcript.call("add_message","office",str(entry["project"]),"Archived project")
 		for line in entry["messages"]:
 			if line is Dictionary:
-				transcript.add_text(str(line.get("sender","")).to_upper() + ": " + str(line.get("text","")).left(2048) + "\n")
-		transcript.add_text("\n")
+				transcript.call("add_message",str(line.get("sender","office")),str(line.get("text","")).left(2048))
 	status.text = "Archived meetings. Send a briefing to return to the active transcript."
 
 func _draft_plan() -> void:
@@ -527,3 +556,12 @@ func _review_outputs() -> void:
 	_append("office", overview + "\n" + "\n".join(details).left(1800))
 	input.text = "Review the actual project task states above, identify remaining work and recommend next steps."
 	status.text = "Actual results loaded. Send if you want an AI review; open Tasks & files for artifacts."
+
+func _toggle_participants() -> void:
+	participants_panel.visible = not participants_panel.visible
+	participant_toggle.text = "Hide participants" if participants_panel.visible else "Participants & privacy"
+
+func _fill_prompt(value: String) -> void:
+	if not busy and proposal.is_empty():
+		input.text = value
+		input.grab_focus()
