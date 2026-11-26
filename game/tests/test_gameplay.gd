@@ -8,6 +8,7 @@ const CameraMath = preload("res://core/office_camera.gd")
 const Geometry = preload("res://core/rounded_geometry.gd")
 const CubotVoice = preload("res://core/cubot_voice.gd")
 const HQ = preload("res://core/hq_layout.gd")
+const ChatView = preload("res://ui/chat_timeline.gd")
 const Navigation = preload("res://core/office_navigation.gd")
 var failures := 0
 
@@ -78,6 +79,7 @@ func _run() -> void:
 	_test_hq()
 	_test_voice()
 	_test_charging_routes()
+	_test_furniture_and_chat()
 	print("CUBYTE gameplay tests: ", failures, " failures")
 	quit(0 if failures == 0 else 1)
 
@@ -210,3 +212,23 @@ func _test_charging_routes() -> void:
 						nav.block_box(positions[j],Vector2(0.65,0.65))
 				check(not nav.route(positions[i],HQ.SPAWNS[i]).is_empty(), "full Cubot can leave charger " + str(i))
 				positions[i] = HQ.SPAWNS[i]
+
+func _test_furniture_and_chat() -> void:
+	check(HQ.WIDTH == 30.0 and HQ.DEPTH == 22.0, "expanded HQ footprint")
+	for name_ in ["Workstation","Monitor","Keyboard","Mouse","Meeting_Table","Lounge_Sofa","Coffee_Table","Storage_Shelf","Planter","Floor_Lamp","Lab_Cabinet"]:
+		var path := "res://assets/furniture/" + str(name_) + ".glb"
+		var scene := load(path) as PackedScene
+		check(scene != null, "imported furniture " + str(name_))
+		if scene != null:
+			var instance := scene.instantiate()
+			check(instance is Node3D, "3D model " + str(name_))
+			instance.free()
+	var timeline := ChatView.new()
+	root.add_child(timeline)
+	timeline.add_message("you","[b]Plain text[/b]")
+	timeline.add_message("atlas","A test response.")
+	check(timeline.messages.get_child_count() == 2, "private/team chat bubbles")
+	timeline.clear()
+	check(timeline.messages.get_child_count() == 0, "chat timeline clears")
+	root.remove_child(timeline)
+	timeline.free()
