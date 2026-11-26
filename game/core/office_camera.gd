@@ -4,7 +4,7 @@ const MIN_PITCH := 0.35
 const MAX_PITCH := 1.22
 const DRAG_SENSITIVITY := 0.006
 const MIN_ZOOM := 6.0
-const MAX_ZOOM := 18.0
+const MAX_ZOOM := 24.0
 
 static func angles(offset: Vector3) -> Vector2:
 	return Vector2(atan2(offset.x, offset.z), clampf(atan2(offset.y, Vector2(offset.x, offset.z).length()), MIN_PITCH, MAX_PITCH))
