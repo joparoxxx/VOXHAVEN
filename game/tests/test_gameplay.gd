@@ -77,6 +77,7 @@ func _run() -> void:
 	_test_camera()
 	_test_hq()
 	_test_voice()
+	_test_charging_routes()
 	print("CUBYTE gameplay tests: ", failures, " failures")
 	quit(0 if failures == 0 else 1)
 
@@ -184,3 +185,28 @@ func _test_voice() -> void:
 	check(atlas.data.size() > 0 and atlas.data != pixel.data, "distinct robot voices")
 	check(atlas == synth.clip("atlas", "neutral", 36), "bounded cached clip reused")
 	check(synth.clip("mesh", "concerned", 10000).get_length() < 1.2, "long replies have bounded chirps")
+
+func _test_charging_routes() -> void:
+	for count in [3,4]:
+		for starting in [HQ.SPAWNS,HQ.SEATS]:
+			var positions: Array = starting.slice(0,count)
+			for i in range(count):
+				var nav := Navigation.new()
+				for j in range(count):
+					nav.block_box(HQ.DESKS[j],Vector2(1.35,0.85))
+				HQ.block_fixed(nav)
+				for j in range(count):
+					if j != i:
+						nav.block_box(positions[j],Vector2(0.65,0.65))
+				check(not nav.route(positions[i],HQ.DOCKS[i]).is_empty(), "reachable charger " + str(i))
+				positions[i] = HQ.DOCKS[i]
+			for i in range(count):
+				var nav := Navigation.new()
+				for j in range(count):
+					nav.block_box(HQ.DESKS[j],Vector2(1.35,0.85))
+				HQ.block_fixed(nav)
+				for j in range(count):
+					if j != i:
+						nav.block_box(positions[j],Vector2(0.65,0.65))
+				check(not nav.route(positions[i],HQ.SPAWNS[i]).is_empty(), "full Cubot can leave charger " + str(i))
+				positions[i] = HQ.SPAWNS[i]
