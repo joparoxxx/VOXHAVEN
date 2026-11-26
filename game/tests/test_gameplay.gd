@@ -5,6 +5,9 @@ const Roster = preload("res://core/robot_roster.gd")
 const Progression = preload("res://core/cubot_progression.gd")
 const Social = preload("res://core/robot_social.gd")
 const CameraMath = preload("res://core/office_camera.gd")
+const Geometry = preload("res://core/rounded_geometry.gd")
+const HQ = preload("res://core/hq_layout.gd")
+const Navigation = preload("res://core/office_navigation.gd")
 var failures := 0
 
 func check(ok: bool, message: String) -> void:
@@ -71,6 +74,7 @@ func _run() -> void:
 	_test_missions(root_, engine, roster)
 	_test_social()
 	_test_camera()
+	_test_hq()
 	print("CUBYTE gameplay tests: ", failures, " failures")
 	quit(0 if failures == 0 else 1)
 
@@ -139,3 +143,29 @@ func _test_camera() -> void:
 	check(is_equal_approx(CameraMath.pinch_size(12, 100, 200), 6.0), "pinch zoom in")
 	check(is_equal_approx(CameraMath.pinch_size(12, 200, 100), 18.0), "pinch zoom out bounded")
 	check(is_equal_approx(CameraMath.pinch_size(12, 0, 100), 12.0), "degenerate pinch ignored")
+
+func _test_hq() -> void:
+	var size_ := Vector3(0.82,0.82,0.82)
+	var mesh := Geometry.rounded_box(size_,0.15)
+	check(mesh.get_surface_count() == 1, "rounded body mesh generated")
+	check(mesh.get_aabb().size.is_equal_approx(size_), "rounded geometry retains collision bounds")
+	var arrays := mesh.surface_get_arrays(0)
+	check(arrays[Mesh.ARRAY_VERTEX].size() == arrays[Mesh.ARRAY_NORMAL].size(), "rounded normals present")
+	for count in [3,4]:
+		var positions: Array = HQ.SPAWNS.slice(0,count)
+		for i in range(count):
+			var nav := Navigation.new()
+			for j in range(count):
+				nav.block_box(HQ.DESKS[j], Vector2(1.35,0.85))
+			HQ.block_fixed(nav)
+			for j in range(count):
+				if i != j:
+					nav.block_box(positions[j],Vector2(0.65,0.65))
+			check(not nav.route(positions[i],HQ.SEATS[i]).is_empty(), "meeting seat reachable " + str(i))
+			positions[i] = HQ.SEATS[i]
+		var nav := Navigation.new()
+		for i in range(count):
+			nav.block_box(HQ.DESKS[i],Vector2(1.35,0.85))
+		HQ.block_fixed(nav)
+		for i in range(count):
+			check(not nav.route(HQ.SEATS[i], HQ.work_target(i,HQ.DESKS[i])).is_empty(), "return to assigned workstation " + str(i))
