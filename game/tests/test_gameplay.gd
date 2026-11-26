@@ -6,6 +6,7 @@ const Progression = preload("res://core/cubot_progression.gd")
 const Social = preload("res://core/robot_social.gd")
 const CameraMath = preload("res://core/office_camera.gd")
 const Geometry = preload("res://core/rounded_geometry.gd")
+const CubotVoice = preload("res://core/cubot_voice.gd")
 const HQ = preload("res://core/hq_layout.gd")
 const Navigation = preload("res://core/office_navigation.gd")
 var failures := 0
@@ -75,6 +76,7 @@ func _run() -> void:
 	_test_social()
 	_test_camera()
 	_test_hq()
+	_test_voice()
 	print("CUBYTE gameplay tests: ", failures, " failures")
 	quit(0 if failures == 0 else 1)
 
@@ -169,3 +171,16 @@ func _test_hq() -> void:
 		HQ.block_fixed(nav)
 		for i in range(count):
 			check(not nav.route(HQ.SEATS[i], HQ.work_target(i,HQ.DESKS[i])).is_empty(), "return to assigned workstation " + str(i))
+
+func _test_voice() -> void:
+	var synth = CubotVoice.new()
+	check(CubotVoice.mood("Are you ready?") == "curious", "question chirp rises")
+	check(CubotVoice.mood("Task completed!") == "happy", "success chirp")
+	check(CubotVoice.mood("There is a problem. Task failed.") == "concerned", "concern chirp")
+	check(CubotVoice.mood("Thinking…") == "thinking", "thinking chirp")
+	var atlas: AudioStreamWAV = synth.clip("atlas", "neutral", 36)
+	var pixel: AudioStreamWAV = synth.clip("pixel", "neutral", 36)
+	check(atlas.mix_rate == 22050 and not atlas.stereo, "lightweight mono voice")
+	check(atlas.data.size() > 0 and atlas.data != pixel.data, "distinct robot voices")
+	check(atlas == synth.clip("atlas", "neutral", 36), "bounded cached clip reused")
+	check(synth.clip("mesh", "concerned", 10000).get_length() < 1.2, "long replies have bounded chirps")
