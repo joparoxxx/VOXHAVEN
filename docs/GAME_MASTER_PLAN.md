@@ -1,4 +1,4 @@
-# Cubyte — Master game plan
+# Voxhaven — Master game plan
 Status: approved offline humanoid colony direction (2026-11-26); implementation and balance not verified. The latest direction below takes precedence over all historical robot-specific sections.
 This document supersedes legacy AI-office product specifications where they conflict. Read it before any gameplay work.
 
@@ -97,3 +97,6 @@ Commit 90e266103900ee7bdb2942d49d154896eb26a517 uploaded 485 additional model fi
 
 ### Clean-slate development decision (owner approved)
 Start a new Godot 4 project from main. Do not migrate or reuse any legacy Godot source, scenes, project settings, UI, AI, persistence or robot mechanics from stable/debug-85 or other old branches. Preserve those branches untouched as historical archives. Reuse only the approved asset library, asset catalog, credits/licenses and current game design documentation. This decision supersedes every earlier instruction to audit or reuse legacy code. Build fresh tests and Android configuration. No new GLB generation at this stage.
+
+## Official branding
+Game title: Voxhaven. Repository: urfavxbf/VOXHAVEN. Proposed Android application ID: com.urfavxbf.voxhaven. AI architecture name: Living Colony Engine. Tagline: Build a world. Grow a civilization. Historical Cubyte references refer to this same project before rebranding. Trademark availability has not been verified.
