@@ -179,7 +179,7 @@ func _ready() -> void:
 func _box(parent: Node3D, size: Vector3, position_: Vector3, color: Color) -> MeshInstance3D:
 	var mesh: Mesh = box_meshes.get(size)
 	if mesh == null:
-		var radius := minf(0.15, minf(size.x, minf(size.y, size.z)) * 0.24)
+		var radius := minf(0.075, minf(size.x, minf(size.y, size.z)) * 0.12)
 		mesh = Geometry.rounded_box(size, radius)
 		box_meshes[size] = mesh
 	var node := MeshInstance3D.new()
@@ -2111,14 +2111,16 @@ func _update_charging(delta: float) -> bool:
 
 # Flatten the bevelled source mesh after generation, keeping generous plan-view corners.
 func _slab(parent: Node3D, size_: Vector3, pos: Vector3, color: Color, radius: float) -> MeshInstance3D:
-	var source_height := maxf(size_.y, radius * 2.1)
+	# Keep the silhouette rectangular: a subtle bevel, never a capsule or disc.
+	var bevel := minf(radius * 0.45, minf(0.22, minf(size_.x, size_.z) * 0.10))
+	var source_height := maxf(size_.y, bevel * 2.1)
 	var source := Vector3(size_.x,source_height,size_.z)
-	var key := str(source) + ":" + str(radius)
+	var key := str(source) + ":" + str(bevel)
 	var mesh: ArrayMesh
 	if blueprint_meshes.has(key):
 		mesh = blueprint_meshes[key]
 	else:
-		mesh = Geometry.rounded_box(source,radius)
+		mesh = Geometry.rounded_box(source,bevel)
 		blueprint_meshes[key] = mesh
 	var node := MeshInstance3D.new()
 	node.mesh = mesh
