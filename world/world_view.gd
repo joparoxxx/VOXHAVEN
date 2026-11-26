@@ -1,7 +1,11 @@
 extends Node3D
 const World = preload("res://world/voxel_world.gd")
 const Mesher = preload("res://world/chunk_mesh.gd")
+const Save = preload("res://world/world_save.gd")
+const SAVE_PATH := "user://world.json"
 const RADIUS := 1
+var place_mode := false
+var status: Label
 var world := World.new(123)
 var chunks: Dictionary = {}
 var pending: Array[Vector2i] = []
@@ -13,6 +17,10 @@ var zoom := 32.0
 var center_chunk := Vector2i(999999,999999)
 
 func _ready() -> void:
+	if not "--world-smoke" in OS.get_cmdline_user_args():
+		var restored := Save.restore(SAVE_PATH)
+		if restored != null: world = restored
+	focus.y = world.surface_at(8,8)+1
 	material.vertex_color_use_as_albedo = true
 	material.roughness = 1.0
 	var light := DirectionalLight3D.new()
@@ -32,6 +40,38 @@ func _ready() -> void:
 	camera.make_current()
 	update_camera()
 	refresh_chunks()
+	var layer := CanvasLayer.new()
+	add_child(layer)
+	var bar := HBoxContainer.new()
+	bar.position = Vector2(16,16)
+	layer.add_child(bar)
+	for title in ["Mine","Place","Save"]:
+		var button := Button.new()
+		button.text = title
+		button.custom_minimum_size = Vector2(90,48)
+		bar.add_child(button)
+		button.pressed.connect(select_action.bind(title))
+	status = Label.new()
+	status.text = "Mine: right click or tap terrain"
+	bar.add_child(status)
+
+func select_action(action: String) -> void:
+	if action == "Save":
+		status.text = "Saved" if Save.save(world,SAVE_PATH) else "Save failed"
+	else:
+		place_mode = action == "Place"
+		status.text = action + ": right click or tap terrain"
+
+func pick_block(screen: Vector2) -> void:
+	var start := camera.project_ray_origin(screen)
+	var end := start + camera.project_ray_normal(screen)*200.0
+	var query := PhysicsRayQueryParameters3D.create(start,end)
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if hit.is_empty(): return
+	var point: Vector3 = hit.position + hit.normal*(0.01 if place_mode else -0.01)
+	var p := Vector3i(point.floor())
+	if edit_block(p,World.Block.DIRT if place_mode else World.Block.AIR):
+		status.text = "Block placed" if place_mode else "Block mined"
 
 func update_camera() -> void:
 	camera.size = zoom
@@ -80,7 +120,19 @@ func edit_block(p: Vector3i, block: int) -> bool:
 		if chunks.has(affected) and not pending.has(affected): pending.append(affected)
 	return true
 
+var touch_start := Vector2.ZERO
+var touch_dragged := false
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventScreenTouch:
+		if event.pressed:
+			touch_start = event.position
+			touch_dragged = false
+		elif not touch_dragged:
+			pick_block(event.position)
+	if event is InputEventScreenDrag and event.position.distance_to(touch_start)>12:
+		touch_dragged = true
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+		pick_block(event.position)
 	if event is InputEventScreenDrag or (event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)):
 		var movement: Vector2 = event.relative
 		focus += Vector3(-movement.x,0,-movement.y).rotated(Vector3.UP,yaw)*zoom/720.0

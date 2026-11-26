@@ -14,3 +14,6 @@ Seeded terrain, six biome classifications, caves, ores, chunk data and in-memory
 
 ## World rendering prototype
 Main scene now opens the seeded world. Exposed-face indexed meshes, vertex-color placeholder materials, 3×3 chunk window, one synchronous chunk build per frame, trimesh collision, pan/zoom and queued edit rebuilds. Existing asset lab remains separately runnable. Texture atlas, background generation, persistence and mobile profiling remain pending. CI adds mesh and world smoke tests.
+
+## Interactive world increment
+Mine/place controls use terrain raycasts (right click or touch tap); placement uses dirt. Manual Save writes versioned seed and edits to user storage, and startup restores them. Persistence round-trip test added. Texture integration, safe spawn selection, background generation and decorations remain pending. Touch and interactive collision need device testing.
