@@ -112,6 +112,9 @@ const Geometry = preload("res://core/rounded_geometry.gd")
 const HQ = preload("res://core/hq_layout.gd")
 var manager_partitions: Array[Node3D] = []
 var wall_details: Node3D
+var front_wall: Node3D
+var right_wall: Node3D
+var blueprint_meshes := {}
 var sound_player: AudioStreamPlayer
 var tones := {}
 var decoration_slot := 0
@@ -193,7 +196,7 @@ func _build_office() -> void:
 	var world := WorldEnvironment.new()
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color("#243a43")
+	env.background_color = Color("#203740")
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color("#e7f2ed")
 	env.ambient_light_energy = 0.78
@@ -215,18 +218,35 @@ func _build_office() -> void:
 	add_child(camera)
 	camera.current = true
 	office_camera = camera
-	_box(self, Vector3(14.2, 0.38, 12.2), Vector3(0, -0.25, 0), Color("#36535d"))
-	_box(self, Vector3(14, 0.12, 12), Vector3(0, -0.06, 0), Color("#e7e5df"))
+	_slab(self, Vector3(18.3,0.42,12.3), Vector3(0,-0.27,0), Color("#36535d"),0.65)
+	_slab(self, Vector3(18,0.12,12), Vector3(0,-0.06,0), Color("#e7e5df"),0.60)
 	# Recessed zone floors remain walkable.
-	_box(self, Vector3(5.7, 0.04, 4.3), Vector3(-4, 0.012, -3.75), Color("#c4bba8"))
-	_box(self, Vector3(6.4, 0.04, 4.3), Vector3(3.3, 0.012, -3.75), Color("#b7cfc9"))
-	_box(self, Vector3(12.8, 0.04, 3.9), Vector3(0, 0.012, 3.45), Color("#d0dcd8"))
-	_box(self, Vector3(12.8, 0.035, 1.5), Vector3(0, 0.015, 0), Color("#9db9b6"))
-	back_wall = _box(self, Vector3(14, 1.55, 0.16), Vector3(0, 0.775, -6), Color("#c5d6d4"))
-	left_wall = _box(self, Vector3(0.16, 1.55, 12), Vector3(-7, 0.775, 0), Color("#bccdcb"))
+	_slab(self,Vector3(5.7,0.035,4.3),Vector3(-4,0.012,-3.75),Color("#c9b58d"),0.45)
+	_slab(self,Vector3(6.4,0.035,4.3),Vector3(3.3,0.012,-3.75),Color("#a9c6cb"),0.45)
+	_slab(self,Vector3(11.8,0.035,3.0),Vector3(0,0.012,3.65),Color("#a1c8c4"),0.45)
+	_slab(self,Vector3(12.0,0.025,2.0),Vector3(0,0.012,0),Color("#b8ceca"),0.45)
+	_slab(self,Vector3(2.5,0.035,3.0),HQ.LOUNGE+Vector3(0,0.018,0),Color("#d6bb91"),0.5)
+	_slab(self,Vector3(2.5,0.035,2.1),HQ.LAB+Vector3(0,0.018,0),Color("#9bb7bb"),0.4)
+	_slab(self,Vector3(2.6,0.035,6.0),Vector3(7.5,0.018,1),Color("#cfbd97"),0.45)
+	back_wall = _box(self, Vector3(18, 1.55, 0.20), Vector3(0, 0.775, -6), Color("#c5d6d4"))
+	left_wall = _box(self, Vector3(0.20, 1.55, 12), Vector3(-9, 0.775, 0), Color("#bccdcb"))
+	front_wall = Node3D.new()
+	add_child(front_wall)
+	_box(front_wall,Vector3(7.65,0.75,0.20),Vector3(-5.15,0.375,6),Color("#b8cdca"))
+	_box(front_wall,Vector3(7.65,0.75,0.20),Vector3(5.15,0.375,6),Color("#b8cdca"))
+	right_wall = Node3D.new()
+	add_child(right_wall)
+	_box(right_wall,Vector3(0.20,0.85,12),Vector3(9,0.425,0),Color("#b8cdca"))
+	_slab(self,Vector3(2.4,0.045,0.85),Vector3(0,0.035,5.55),Color("#76bdb5"),0.24)
+	_zone_label("HQ ENTRANCE",Vector3(0,0.085,5.55),Color("#244954"))
 	wall_details = Node3D.new()
 	add_child(wall_details)
-	_box(wall_details, Vector3(13.8, 0.09, 0.10), Vector3(0, 1.52, -5.91), Color("#70d7b1"))
+	_box(wall_details, Vector3(17.8, 0.09, 0.10), Vector3(0, 1.52, -5.89), Color("#70d7b1"))
+	_build_wall_display(wall_details,Vector3(3.5,1.12,-5.84),Color("#70d7b1"))
+	_build_wall_display(wall_details,Vector3(-4,1.12,-5.84),Color("#eac678"))
+	for x in [-8.2,-6.8,1.0,6.6,8.2]:
+		_box(wall_details,Vector3(0.68,0.70,0.045),Vector3(x,0.98,-5.87),Color("#85b4bf"))
+		_box(wall_details,Vector3(0.74,0.055,0.09),Vector3(x,1.36,-5.85),Color("#e4eee5"))
 	# Manager's private suite. Glass-style tinted low partitions leave a real doorway.
 	for part in HQ.PARTITIONS:
 		var center: Vector3 = part["center"]
@@ -237,8 +257,8 @@ func _build_office() -> void:
 		manager_partitions.append(rail)
 	_zone_label("ATLAS  /  MANAGEMENT", Vector3(-4,0.045,-5.55), Color("#6c5d42"))
 	_zone_label("MEETING ROOM", Vector3(3.5,0.045,-5.7), Color("#36535d"))
-	_zone_label("PRODUCTION", Vector3(0,0.045,5.45), Color("#36535d"))
-	_zone_label("SOCIAL CORRIDOR", Vector3(0,0.045,0), Color("#36535d"))
+	_zone_label("PRODUCTION", Vector3(0,0.045,4.85), Color("#36535d"))
+	_zone_label("SOCIAL CORRIDOR", Vector3(0,0.045,0.65), Color("#36535d"))
 	for i in range(4):
 		var desk := Node3D.new()
 		add_child(desk)
@@ -249,17 +269,19 @@ func _build_office() -> void:
 		_build_desk(desk, ROBOT_COLORS[i], i == 0)
 		_build_robot(HQ.SPAWNS[i], ROBOT_COLORS[i])
 	# Conference table with four clear docking positions and a shared project display.
-	_box(self, Vector3(1.7,0.70,0.95), HQ.MEETING_CENTER + Vector3(0,0.40,0), Color("#36535d"))
-	_box(self, Vector3(1.95,0.16,1.1), HQ.MEETING_CENTER + Vector3(0,0.83,0), Color("#e7e5df"))
+	_slab(self, Vector3(1.7,0.70,0.95), HQ.MEETING_CENTER + Vector3(0,0.40,0), Color("#36535d"),0.38)
+	_slab(self, Vector3(1.95,0.16,1.1), HQ.MEETING_CENTER + Vector3(0,0.83,0), Color("#e7e5df"),0.45)
 	var screen := _box(self, Vector3(0.95,0.07,0.48), HQ.MEETING_CENTER + Vector3(0,0.95,0), Color("#213e48"))
 	screen.material_override.emission_enabled = true
 	screen.material_override.emission = Color("#70d7b1")
 	screen.material_override.emission_energy_multiplier = 0.25
 	for i in range(HQ.SEATS.size()):
-		_box(self, Vector3(0.9,0.025,0.9), HQ.SEATS[i] + Vector3(0,0.04,0), ROBOT_COLORS[i].darkened(0.25))
-	_box(self, Vector3(1.2,0.06,1.2), HQ.LOUNGE + Vector3(0,0.04,0), Color("#537d79"))
-	_box(self, Vector3(1.2,0.65,0.6), HQ.LAB + Vector3(0,0.35,0), Color("#36535d"))
-	_box(self, Vector3(1.25,0.12,0.65), HQ.LAB + Vector3(0,0.73,0), Color("#d0dcd8"))
+		_slab(self, Vector3(0.9,0.025,0.9), HQ.SEATS[i] + Vector3(0,0.04,0), ROBOT_COLORS[i].darkened(0.25),0.30)
+	_build_blueprint_lounge()
+	_build_blueprint_lab()
+	_plant(self,HQ.PLANTER,0.80)
+	for point in [Vector3(-8.35,0,-5.3),Vector3(8.35,0,-5.3),Vector3(-8.6,0,5.4),Vector3(8.6,0,5.4)]:
+		_plant(self,point,0.48)
 	_zone_label("UPGRADE LAB", HQ.LAB + Vector3(0,0.045,0.9), Color("#36535d"))
 	_build_charging_docks()
 	_refresh_hired_robot()
@@ -283,7 +305,9 @@ func _zone_label(value: String, pos: Vector3, color: Color) -> void:
 
 func _build_desk(desk: Node3D, accent: Color, executive: bool) -> void:
 	var width := 2.05 if executive else 1.8
-	_box(desk, Vector3(width,0.15,0.9), Vector3(0,0.85,0), Color("#f0ede5"))
+	_slab(desk,Vector3(width,0.15,0.9),Vector3(0,0.85,0),Color("#f0ede5"),0.38)
+	_slab(desk,Vector3(width-0.10,0.18,0.78),Vector3(0,0.69,0),Color("#b69c6c") if executive else Color("#456d72"),0.30)
+	_glow(desk,Vector3(width-0.32,0.035,0.05),Vector3(0,0.72,0.39),Color("#f1ca77") if executive else Color("#70d7b1"))
 	for side in [-1,1]:
 		_box(desk, Vector3(0.32,0.74,0.74), Vector3(side * (width / 2.0 - 0.23),0.38,0), Color("#526e75"))
 	_box(desk, Vector3(width - 0.18,0.08,0.08), Vector3(0,0.77,0.43), accent)
@@ -1296,7 +1320,7 @@ func _build_layout_dialog() -> void:
 	power_check.toggled.connect(_set_power_mode)
 	column.add_child(power_check)
 	column.add_child(UI.button("Zoom in", func(): office_camera.size = maxf(6.0, office_camera.size - 1.5)))
-	column.add_child(UI.button("Zoom out", func(): office_camera.size = minf(18.0, office_camera.size + 1.5)))
+	column.add_child(UI.button("Zoom out", func(): office_camera.size = minf(CameraMath.MAX_ZOOM, office_camera.size + 1.5)))
 	column.add_child(UI.label("Camera: one finger rotates, two fingers pan or pinch to zoom.", 16, UI.MUTED))
 	var camera_row := HBoxContainer.new()
 	column.add_child(camera_row)
@@ -1448,13 +1472,13 @@ func _pan_camera(relative: Vector2) -> void:
 	var forward := office_camera.global_basis.z
 	forward.y = 0
 	var target := camera_target - right.normalized() * relative.x * scale_ - forward.normalized() * relative.y * scale_
-	target.x = clampf(target.x, -6.0, 6.0)
+	target.x = clampf(target.x, -8.0, 8.0)
 	target.z = clampf(target.z, -5.0, 5.0)
 	camera_target = target
 	_apply_camera_pose()
 
 func _reset_camera() -> void:
-	office_camera.size = 18.0
+	office_camera.size = 22.0
 	camera_target = Vector3(0, 1, 0)
 	var original := Vector3(12, 12, 18)
 	orbit_angles = CameraMath.angles(original)
@@ -1482,6 +1506,10 @@ func _apply_camera_pose() -> void:
 		panel.visible = offset.z >= -0.5 and offset.x >= -0.5
 	if is_instance_valid(left_wall):
 		left_wall.visible = offset.x >= -0.5
+	if is_instance_valid(front_wall):
+		front_wall.visible = offset.z <= 0.5
+	if is_instance_valid(right_wall):
+		right_wall.visible = offset.x <= 0.5
 
 func _team_task(robot_id: String, tool: String, payload: String, worker_id: String) -> void:
 	var previous := pending_id
@@ -1513,28 +1541,28 @@ func _refresh_decorations() -> void:
 		decorations.remove_child(child)
 		child.queue_free()
 	var upgrades: Array = company.snapshot()["upgrades"]
-	var plant_x := -6.6 if decoration_slot == 0 else 6.6
+	var plant_x := -8.1 if decoration_slot == 0 else 8.1
 	var lamp_x := -plant_x
 	if "plant" in upgrades:
 		_box(decorations, Vector3(0.45, 0.45, 0.45), Vector3(plant_x, 0.225, -5.6), Color("#ad7952"))
 		_box(decorations, Vector3(0.65, 0.65, 0.65), Vector3(plant_x, 0.75, -5.6), Color("#468b58"))
 	if "lounge" in upgrades:
-		_box(decorations, Vector3(1.2, 0.4, 0.8), HQ.LOUNGE + Vector3(0,0.35,0), Color("#527d82"))
-		_box(decorations, Vector3(1.2, 0.65, 0.18), HQ.LOUNGE + Vector3(0,0.65,0.35), Color("#36585d"))
+		_slab(decorations,Vector3(0.55,0.32,0.55),HQ.LOUNGE+Vector3(0.65,0.19,0.64),Color("#d3ba85"),0.22)
+		_slab(decorations,Vector3(0.55,0.32,0.55),HQ.LOUNGE+Vector3(-0.65,0.19,0.64),Color("#d3ba85"),0.22)
 	if "lamp" in upgrades:
 		_box(decorations, Vector3(0.2, 0.2, 0.2), Vector3(lamp_x, 0.1, -5.6), Color("#586475"))
 		_box(decorations, Vector3(0.08, 1.5, 0.08), Vector3(lamp_x, 0.85, -5.6), Color("#738297"))
 		_box(decorations, Vector3(0.4, 0.18, 0.4), Vector3(lamp_x, 1.7, -5.6), Color("#f5d998"))
 	if "bookshelf" in upgrades:
-		_box(decorations, Vector3(0.25, 1.5, 1.25), Vector3(-6.75, 0.75, 4.3), Color("#66574e"))
+		_box(decorations, Vector3(0.25, 1.5, 1.25), Vector3(-8.75, 0.75, 4.3), Color("#66574e"))
 		for row in range(3):
-			_box(decorations, Vector3(0.28, 0.055, 1.2), Vector3(-6.61, 0.25 + row * 0.45, 4.3), Color("#d1a97d"))
+			_box(decorations, Vector3(0.28, 0.055, 1.2), Vector3(-8.61, 0.25 + row * 0.45, 4.3), Color("#d1a97d"))
 			for book in range(4):
-				_box(decorations, Vector3(0.16, 0.32, 0.19), Vector3(-6.57, 0.42 + row * 0.45, 3.88 + book * 0.23), Color.from_hsv(float(book + row) / 7.0, 0.45, 0.75))
+				_box(decorations, Vector3(0.16, 0.32, 0.19), Vector3(-8.57, 0.42 + row * 0.45, 3.88 + book * 0.23), Color.from_hsv(float(book + row) / 7.0, 0.45, 0.75))
 	if "whiteboard" in upgrades:
-		_box(decorations, Vector3(2.2, 0.75, 0.06), Vector3(3.5, 1.47, -5.89), Color("#e5edef"))
+		_box(decorations, Vector3(2.2, 0.75, 0.06), Vector3(5.8, 0.72, -5.84), Color("#e5edef"))
 		for line in range(3):
-			_box(decorations, Vector3(1.25 - line * 0.15, 0.035, 0.015), Vector3(3.35, 1.68 - line * 0.17, -5.85), Color("#6d8e99"))
+			_box(decorations, Vector3(1.25 - line * 0.15, 0.035, 0.015), Vector3(5.65, 0.93 - line * 0.17, -5.80), Color("#6d8e99"))
 
 func _show_workflow_builder() -> void:
 	if not busy and not meeting_active and not ai_console.online_busy:
@@ -1629,7 +1657,7 @@ func _update_ambient(delta: float) -> void:
 			var best: Array[Vector3] = []
 			for direction in [Vector3(1.5, 0, 0), Vector3(-1.5, 0, 0), Vector3(0, 0, 1.5), Vector3(0, 0, -1.5)]:
 				var target: Vector3 = robots[j].position + direction
-				if absf(target.x) > 6.5 or absf(target.z) > 5.5:
+				if absf(target.x) > 8.5 or absf(target.z) > 5.5:
 					continue
 				var candidate: Array[Vector3] = plan.route(robots[i].position, target)
 				if not candidate.is_empty() and (best.is_empty() or candidate.size() < best.size()):
@@ -1947,8 +1975,10 @@ func _build_charging_docks() -> void:
 		add_child(dock)
 		dock.position = HQ.DOCKS[i]
 		charge_docks.append(dock)
-		_box(dock, Vector3(1.25,0.045,1.25), Vector3(0,0.025,0), Color("#36535d"))
-		_box(dock, Vector3(1.08,0.022,1.08), Vector3(0,0.055,0), Color("#91b6ae"))
+		_slab(dock,Vector3(1.25,0.045,1.25),Vector3(0,0.025,0),Color("#36535d"),0.42)
+		_slab(dock,Vector3(1.08,0.022,1.08),Vector3(0,0.055,0),Color("#91b6ae"),0.40)
+		_glow(dock,Vector3(0.12,0.018,0.75),Vector3(-0.42,0.076,0),Color("#70d7b1"))
+		_glow(dock,Vector3(0.12,0.018,0.75),Vector3(0.42,0.076,0),Color("#70d7b1"))
 		var light := _box(dock, Vector3(0.9,0.035,0.10), Vector3(0,0.077,-0.51), Color("#70d7b1"))
 		var material: StandardMaterial3D = light.material_override
 		material.emission_enabled = true
@@ -1965,7 +1995,7 @@ func _build_charging_docks() -> void:
 		label.modulate = Color("#243a43")
 		dock.add_child(label)
 		charge_labels.append(label)
-	_zone_label("CHARGING BAY", Vector3(0,0.085,5.82), Color("#36535d"))
+	_zone_label("CHARGING BAY", Vector3(7.5,0.085,4.35), Color("#36535d"))
 
 func _interrupt_charging() -> void:
 	charge_idle = 0.0
@@ -2073,3 +2103,72 @@ func _update_charging(delta: float) -> bool:
 			_start_charge_walk(i, false, next_route)
 			return true
 	return false
+
+# Flatten the bevelled source mesh after generation, keeping generous plan-view corners.
+func _slab(parent: Node3D, size_: Vector3, pos: Vector3, color: Color, radius: float) -> MeshInstance3D:
+	var source_height := maxf(size_.y, radius * 2.1)
+	var source := Vector3(size_.x,source_height,size_.z)
+	var key := str(source) + ":" + str(radius)
+	var mesh: ArrayMesh
+	if blueprint_meshes.has(key):
+		mesh = blueprint_meshes[key]
+	else:
+		mesh = Geometry.rounded_box(source,radius)
+		blueprint_meshes[key] = mesh
+	var node := MeshInstance3D.new()
+	node.mesh = mesh
+	node.position = pos
+	node.scale.y = size_.y / source_height
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.roughness = 0.74
+	node.material_override = mat
+	parent.add_child(node)
+	return node
+
+func _glow(parent: Node3D, size_: Vector3, pos: Vector3, color: Color) -> MeshInstance3D:
+	var node := _box(parent,size_,pos,color)
+	var mat: StandardMaterial3D = node.material_override
+	mat.emission_enabled = true
+	mat.emission = color
+	mat.emission_energy_multiplier = 0.45
+	return node
+
+func _build_wall_display(parent: Node3D, center: Vector3, accent: Color) -> void:
+	_slab(parent,Vector3(2.5,0.92,0.12),center,Color("#254955"),0.045)
+	_glow(parent,Vector3(2.22,0.065,0.035),center+Vector3(0,0.34,0.085),accent)
+	for i in range(4):
+		var height := 0.11+0.09*i
+		_glow(parent,Vector3(0.18,height,0.035),center+Vector3(0.27+i*0.32,-0.28+height*0.5,0.085),accent)
+	for i in range(3):
+		_box(parent,Vector3(0.63-i*0.13,0.035,0.025),center+Vector3(-0.63,0.12-i*0.16,0.085),Color("#b8d7d2"))
+
+func _plant(parent: Node3D, center: Vector3, size_: float) -> void:
+	_slab(parent,Vector3(size_*1.22,size_*0.42,size_*1.22),center+Vector3(0,size_*0.21,0),Color("#607b78"),size_*0.30)
+	_slab(parent,Vector3(size_,0.08,size_),center+Vector3(0,size_*0.43,0),Color("#594c3d"),size_*0.28)
+	for i in range(5):
+		var angle := TAU*float(i)/5.0
+		var leaf := _slab(parent,Vector3(size_*0.35,size_*0.48,size_*0.28),center+Vector3(cos(angle)*size_*0.23,size_*0.69,sin(angle)*size_*0.23),Color("#4f8d66").lightened(float(i)*0.045),size_*0.12)
+		leaf.rotation.z = 0.38*cos(angle)
+		leaf.rotation.x = 0.38*sin(angle)
+
+func _build_blueprint_lounge() -> void:
+	var p: Vector3 = HQ.LOUNGE
+	_slab(self,Vector3(1.95,0.03,1.95),p+Vector3(0,0.055,0),Color("#bda37b"),0.65)
+	_slab(self,Vector3(1.65,0.29,0.62),p+Vector3(0,0.20,-0.55),Color("#667c7a"),0.22)
+	_slab(self,Vector3(1.65,0.18,0.62),p+Vector3(0,0.42,-0.55),Color("#e5d8b8"),0.22)
+	_slab(self,Vector3(1.65,0.48,0.17),p+Vector3(0,0.58,-0.83),Color("#80918c"),0.075)
+	for side in [-1,1]:
+		_slab(self,Vector3(0.19,0.37,0.61),p+Vector3(side*0.76,0.44,-0.53),Color("#80918c"),0.08)
+	_slab(self,Vector3(0.68,0.28,0.68),p+Vector3(0,0.20,0.30),Color("#657c7b"),0.29)
+	_slab(self,Vector3(0.80,0.11,0.80),p+Vector3(0,0.39,0.30),Color("#eee4d0"),0.34)
+	_zone_label("LOUNGE",p+Vector3(0,0.09,1.22),Color("#36535d"))
+
+func _build_blueprint_lab() -> void:
+	var p: Vector3 = HQ.LAB
+	_slab(self,Vector3(1.35,0.50,0.95),p+Vector3(0,0.30,0),Color("#36535d"),0.28)
+	_slab(self,Vector3(1.45,0.14,1.05),p+Vector3(0,0.62,0),Color("#b9d2ca"),0.32)
+	_glow(self,Vector3(0.72,0.04,0.72),p+Vector3(0,0.71,0),Color("#70d7b1"))
+	var core := _glow(self,Vector3(0.33,0.33,0.33),p+Vector3(0,1.04,0),Color("#8de7dd"))
+	core.rotation.y = PI/4.0
+	core.rotation.z = PI/6.0
