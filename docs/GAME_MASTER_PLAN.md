@@ -1,8 +1,8 @@
 # Cubyte — Master game plan
-Status: approved product direction; implementation and balance not verified.
+Status: approved offline humanoid colony direction (2026-11-26); implementation and balance not verified. The latest direction below takes precedence over all historical robot-specific sections.
 This document supersedes legacy AI-office product specifications where they conflict. Read it before any gameplay work.
 
-## Product
+## Historical robot product direction (superseded)
 Offline-first native Android 3D robot colony simulator. No real project generation, AI providers, API keys, terminal execution, accounts or mandatory servers. References: The Colonists (colony management), Autonauts (automation), Pocket Build (touch building). Original assets; verify third-party licenses.
 
 ## Technical foundation
@@ -65,3 +65,32 @@ Mining removes blocks and yields physical resources through inventory transactio
 
 ### Asset library status
 Main commit abed57f added 591 catalogued models across seven packs: Block Bits 40, Dungeon 211, Fantasy Weapons 31, Mixed Bag 41, RPG Tools 49, Resource Bits 76, Kenney Factory Kit 143. This supersedes earlier statements that all asset imports are pending: repository upload is complete, Godot integration and runtime validation remain pending. Holiday Bits excluded pending license verification; Space Base Bits not yet uploaded. Preserve licenses and original dependencies. No new GLBs commissioned. This section records approved direction, not completed implementation.
+
+
+## Current approved direction — 2026-11-26
+Cubyte is a fully offline Minecraft-inspired 3D colony simulator for Android. KayKit humanoid characters replace Cubots as the primary colonists; exact character selection follows rig and animation tests. Preserve legacy robot code and plans for reference, but do not treat robot batteries, charging, robot manufacturing or mechanical slots as current requirements. No Gemini, cloud AI, API keys, external LLM or mandatory network service. Use Godot 4 and local deterministic simulation.
+
+### Living colony AI
+- Perception: bounded spatial queries and event-driven awareness.
+- Memory: bounded local records of locations, events, relationships and task outcomes; persist relevant records.
+- Personality and needs: hunger, thirst, stamina, health, happiness, traits, preferences, skills, experience, goals and relationships.
+- Utility AI: score feasible goals from needs, danger, personality and colony priorities; use hysteresis and emergency overrides.
+- GOAP: bounded planning for multi-step goals; reserve resources and jobs, replan on invalidation, avoid infinite retries.
+- Behavior trees and state machines: execute movement, gathering, hauling, crafting, construction, eating, resting and combat with explicit failure/cancellation handling.
+- Local navigation: chunk-aware A* or suitable Godot navigation, invalidate routes after terrain edits, stagger path requests.
+- Procedural dialogue and skill progression: local templates and gameplay rules, not an LLM.
+- Performance: stagger decision ticks, cap planning work, simplify distant agents, keep simulation independent of rendering. Profile on Android before increasing population.
+
+### Gameplay and assets
+Start with a proposed three colonists and storage area in a safe seeded world. Assign mining and woodcutting, haul resources, build a house, then expand to farming, crafting, survival, exploration and technology. Replace battery-centric needs with biological needs. Adapt equipment to humanoid rigs (head, body, primary tool, secondary tool, footwear and backpack proposed); retain offline crafting, rarity and enhancement concepts subject to balance. Fantasy Town and Furniture Bits are initial building candidates; Space Base and Factory Kit are later technology candidates. Exact asset mapping remains pending audit. Do not generate new GLBs yet.
+
+### Current asset inventory
+Commit 90e266103900ee7bdb2942d49d154896eb26a517 uploaded 485 additional model files: Mini-Game Variety 134, Adventurers 39, Character Animations 16, Furniture 53, Skeletons 19, Space Base 57, Fantasy Town 167. Total 1,076 GLB/glTF files across 14 packs, approximately 50 MB on disk. User's Termux import reported zero dependency errors and included CC0 license checks. These counts include animation files and are not necessarily unique meshes. Godot import, rig compatibility and runtime performance are unverified. 45 standalone models and Holiday Bits remain local/pending provenance or license verification.
+
+### Implementation order (supersedes historical roadmap)
+1. Audit stable/debug-85 Godot project and main asset catalog; identify reusable code, legacy dependencies and test commands. Work on a development branch.
+2. Create data-driven asset registry and Godot smoke scene; validate representative terrain, humanoid rigs, animation clips, tools and buildings, materials, scale and pivots.
+3. Implement deterministic voxel chunks, block registry, edits, collision, navigation invalidation and save/load tests.
+4. Implement small offline colony vertical slice: three colonists, job reservations, utility selection, bounded planning and execution, mining/woodcutting, hauling and storage.
+5. Add construction and needs, then farming, crafting, equipment, relationships, exploration and progression incrementally.
+6. Test headless logic, smoke scenes, Android build and physical-device performance separately. Initial target 30 FPS; 60 FPS optional subject to profiling. No implementation or test success claims without evidence.
