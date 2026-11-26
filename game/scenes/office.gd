@@ -399,7 +399,7 @@ func _build_ui() -> void:
 	var workspace_button := UI.button("Tasks & files", _show_workspace)
 	workspace_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	workspace_row.add_child(workspace_button)
-	workspace_row.add_child(UI.button("Build", _show_build))
+	var build_button := UI.button("Build", _show_build)
 	var company_row := HBoxContainer.new()
 	top_column.add_child(company_row)
 	company_label = UI.label("", 16, UI.MUTED)
@@ -407,6 +407,7 @@ func _build_ui() -> void:
 	company_row.add_child(company_label)
 	company_row.add_child(UI.button("Company", _show_company))
 	company_row.add_child(UI.button("Workflow", _show_workflow_builder))
+	company_row.add_child(build_button)
 	_refresh_company_label()
 
 	var bottom := PanelContainer.new()
@@ -492,6 +493,7 @@ func _build_ui() -> void:
 	meeting_room.set("meeting_mode", true)
 	meeting_room.hide()
 	add_child(meeting_room)
+	meeting_room.call("set_project_engine", engine)
 	meeting_room.connect("project_plan_ready", _review_meeting_plan)
 	meeting_room.connect("speaker_changed", _meeting_speaker_changed)
 	meeting_room.connect("meeting_ended", _end_meeting)
@@ -1216,8 +1218,8 @@ func _build_layout_dialog() -> void:
 	column.add_child(UI.button("Close", build_dialog.hide))
 	column.add_child(UI.label("Move desks within their lanes, assign stations and customize robot body color.", 16, UI.MUTED))
 	desk_picker = OptionButton.new()
-	for i in range(3):
-		desk_picker.add_item("Desk " + str(i + 1))
+	for i in range(4):
+		desk_picker.add_item(ROBOT_IDS[i].to_upper() + " desk")
 	column.add_child(desk_picker)
 	column.add_child(UI.button("Move desk toward wall", func(): _move_desk(-1)))
 	column.add_child(UI.button("Move desk toward center", func(): _move_desk(1)))
@@ -1225,7 +1227,7 @@ func _build_layout_dialog() -> void:
 	column.add_child(UI.button("Nudge desk right", func(): _move_desk_x(1)))
 	robot_picker = OptionButton.new()
 	station_picker = OptionButton.new()
-	for i in range(3):
+	for i in range(4):
 		robot_picker.add_item(ROBOT_IDS[i].to_upper())
 		station_picker.add_item("Station " + str(i + 1))
 	column.add_child(robot_picker)
@@ -1273,6 +1275,10 @@ func _show_build() -> void:
 		return
 	if busy or ai_console.online_busy:
 		return
+	for picker in [desk_picker, robot_picker, station_picker]:
+		picker.set_item_disabled(3, not roster.is_active("nova"))
+		if picker.selected == 3 and not roster.is_active("nova"):
+			picker.select(0)
 	_layout_robot_selected(robot_picker.selected)
 	UI.show_modal(build_dialog)
 
@@ -1284,7 +1290,7 @@ func _layout_robot_selected(index: int) -> void:
 
 func _move_desk(direction: int) -> void:
 	var index := desk_picker.selected
-	if index < 0 or busy:
+	if index < 0 or busy or not roster.is_active(ROBOT_IDS[index]):
 		return
 	if index == 0:
 		layout_status.text = "ATLAS has a dedicated executive desk."
@@ -1314,7 +1320,7 @@ func _move_desk(direction: int) -> void:
 func _assign_station() -> void:
 	var robot := robot_picker.selected
 	var station := station_picker.selected
-	if robot < 0 or station < 0 or busy:
+	if robot < 0 or station < 0 or busy or not roster.is_active(ROBOT_IDS[robot]) or not roster.is_active(ROBOT_IDS[station]):
 		return
 	if robot == 0 or station == 0:
 		layout_status.text = "ATLAS keeps the executive workstation."
@@ -1698,7 +1704,7 @@ func _play_tone(id: String) -> void:
 
 func _move_desk_x(direction: int) -> void:
 	var index := desk_picker.selected
-	if index <= 0 or index >= 4 or busy:
+	if index <= 0 or index >= 4 or busy or not roster.is_active(ROBOT_IDS[index]):
 		return
 	var center: float = HQ.DESKS[index].x
 	var old := desks[index].position.x
