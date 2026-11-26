@@ -16,6 +16,12 @@ const Company = preload("res://core/company.gd")
 const CompanyHQ = preload("res://scenes/company_hq.gd")
 var company = Company.new()
 var company_hq: Window
+const Progression = preload("res://core/cubot_progression.gd")
+const MissionBoard = preload("res://scenes/mission_board.gd")
+var progression = Progression.new()
+var mission_board: Window
+var equipment_markers: Array[MeshInstance3D] = []
+var movement_bonus := 1.0
 const WorkflowBuilder = preload("res://scenes/workflow_builder.gd")
 var workflow_builder: Window
 var company_label: Label
@@ -116,6 +122,8 @@ func _ready() -> void:
 	_build_office()
 	_build_ui()
 	_init_audio()
+	for id in ROBOT_IDS:
+		_refresh_equipment(id)
 	Engine.max_fps = 30 if low_power else 60
 	engine.task_changed.connect(_on_task_changed)
 	if not engine.is_ready() or not roster.is_ready():
@@ -234,6 +242,9 @@ func _build_robot(position_: Vector3, color: Color) -> void:
 	robot.add_child(roller)
 	wheels.append(roller)
 	robot_bodies.append(_box(robot, Vector3(0.82, 0.82, 0.82), Vector3(0, 0.79, 0), color))
+	var marker := _box(robot, Vector3(0.16, 0.12, 0.08), Vector3(0.28, 1.26, 0.28), Color("#f5d998"))
+	marker.hide()
+	equipment_markers.append(marker)
 	_box(robot, Vector3(0.7, 0.09, 0.7), Vector3(0, 1.245, 0), color.lightened(0.25))
 	_box(robot, Vector3(0.62, 0.10, 0.62), Vector3(0, 0.34, 0), Color("#263544"))
 	for side in [-1, 1]:
@@ -394,6 +405,11 @@ func _build_ui() -> void:
 	workflow_builder.connect("approved", _start_team_workflow)
 	_build_skill_dialog()
 	_build_robot_dialog()
+	mission_board = MissionBoard.new()
+	mission_board.hide()
+	add_child(mission_board)
+	mission_board.connect("mission_requested", _start_mission)
+	mission_board.connect("equipment_changed", _refresh_equipment)
 	_build_layout_dialog()
 	_select_cubot(-1)
 
@@ -510,6 +526,7 @@ func _start_queued() -> void:
 		status.text = "No clear route to workstation. Task remains queued."
 		workflow_queue.clear()
 		return
+	movement_bonus = progression.speed_multiplier(ROBOT_IDS[selected])
 	busy = true
 	face_states[selected] = "working"
 	progress_timer = 0.0
@@ -551,9 +568,9 @@ func _process(delta: float) -> void:
 	if not route.is_empty():
 		var waypoint: Vector3 = route[0]
 		var before := robot.position
-		robot.position = before.move_toward(waypoint, delta * 3.0)
+		robot.position = before.move_toward(waypoint, delta * 3.0 * movement_bonus)
 		if robot.position.distance_to(before) > 0.001:
-			wheels[selected].rotate_x(-delta * 8.0)
+			wheels[selected].rotate_x(-delta * 8.0 * movement_bonus)
 		if robot.position.distance_to(waypoint) < 0.01:
 			route.pop_front()
 		return
@@ -564,8 +581,15 @@ func _process(delta: float) -> void:
 		engine.run_task(current)
 		var completed: Dictionary = engine.get_task(current)
 		var succeeded: bool = completed.get("status") == "succeeded"
-		if succeeded and company.reward(completed):
-			_refresh_company_label()
+		if succeeded:
+			if company.reward(completed):
+				_refresh_company_label()
+			var earned: Dictionary = progression.reward(completed)
+			if not earned.is_empty():
+				_refresh_equipment(str(completed["robot_id"]))
+				status.text += "\n+" + str(earned["xp"]) + " XP · Lv " + str(earned["level"])
+				if not str(earned["equipment"]).is_empty():
+					status.text += " · Unlocked " + str(earned["equipment"])
 		_reset()
 		if succeeded and not workflow_queue.is_empty():
 			var next_id: String = workflow_queue.pop_front()
@@ -777,6 +801,7 @@ func _build_robot_dialog() -> void:
 	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(column)
 	column.add_child(UI.button("Close", robot_dialog.hide))
+	column.add_child(UI.button("Missions & equipment", _show_missions))
 	profile_label = Label.new()
 	profile_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	column.add_child(profile_label)
@@ -839,7 +864,7 @@ func _show_robot_profile() -> void:
 	if profile.is_empty():
 		status.text = "Robot profile unavailable."
 		return
-	profile_label.text = id.to_upper() + " | " + str(profile["role"]) + " | " + str(profile["specialization"]) + "\nSkills: " + str(skills.inventory(id))
+	profile_label.text = id.to_upper() + " | " + str(profile["role"]) + " | " + str(profile["specialization"]) + "\nLevel " + str(progression.level(id)) + " · " + str(int(progression.snapshot(id).get("xp", 0))) + " XP\nSkills: " + str(skills.inventory(id))
 	personality_editor.text = profile["personality"]
 	memory_editor.text = profile["memory"]
 	allow_text.button_pressed = roster.can_use(id, "text")
@@ -1175,6 +1200,8 @@ func _notification(what: int) -> void:
 		build_dialog.hide()
 	elif skill_dialog.visible:
 		skill_dialog.hide()
+	elif is_instance_valid(mission_board) and mission_board.visible:
+		mission_board.hide()
 	elif robot_dialog.visible:
 		robot_dialog.hide()
 	elif tools_panel.visible:
@@ -1276,7 +1303,7 @@ func _stop_ambient() -> void:
 	ambient_wait = 4.0
 
 func _modal_open() -> bool:
-	for window in [ai_console, team_chat, workspace, build_dialog, robot_dialog, skill_dialog, company_hq, workflow_builder]:
+	for window in [ai_console, team_chat, workspace, build_dialog, robot_dialog, skill_dialog, company_hq, workflow_builder, mission_board]:
 		if is_instance_valid(window) and window.visible:
 			return true
 	return false
@@ -1407,3 +1434,29 @@ func _set_power_mode(value: bool) -> void:
 		low_power = old
 		power_check.set_pressed_no_signal(old)
 	Engine.max_fps = 30 if low_power else 60
+
+func _show_missions() -> void:
+	if busy or selected < 0 or not roster.is_active(ROBOT_IDS[selected]):
+		return
+	robot_dialog.hide()
+	mission_board.call("show_for", ROBOT_IDS[selected], progression, roster)
+
+func _start_mission(robot_id: String, tool: String, payload: String) -> void:
+	if busy or not progression.ready or not roster.is_active(robot_id) or not roster.can_use(robot_id, tool):
+		return
+	var mission: Dictionary = progression.current_mission(robot_id)
+	if mission.get("tool") != tool:
+		return
+	_select_cubot(ROBOT_IDS.find(robot_id))
+	_queue(tool, payload)
+
+func _refresh_equipment(robot_id: String) -> void:
+	var i := ROBOT_IDS.find(robot_id)
+	if i < 0 or i >= equipment_markers.size():
+		return
+	var entry: Dictionary = progression.snapshot(robot_id)
+	var tier := int(entry.get("equipped", -1))
+	equipment_markers[i].visible = tier >= 0
+	if tier >= 0:
+		equipment_markers[i].material_override.albedo_color = [Color("#a8c4d8"), Color("#70d7b1"), Color("#f5d998")][tier]
+	cubot_labels[i].text = robot_id.to_upper() + " · Lv " + str(progression.level(robot_id))
