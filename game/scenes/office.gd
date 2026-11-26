@@ -2024,10 +2024,10 @@ func _update_charge_indicators(delta: float) -> void:
 			continue
 		var material: StandardMaterial3D = charge_lights[i].material_override
 		material.emission_energy_multiplier = (0.35 if charge_percent[i] >= 100.0 else 0.3 + 0.25 * sin(face_clock * 3.0)) if charge_docked[i] else 0.05
-		var dock_text := ("FULL · READY" if charge_percent[i] >= 100.0 else "CHARGING " + str(roundi(float(charge_percent[i]))) + "%") if charge_docked[i] else ROBOT_IDS[i].to_upper() + " · DOCK"
+		var dock_text: String = ("FULL · READY" if charge_percent[i] >= 100.0 else "CHARGING " + str(roundi(float(charge_percent[i]))) + "%") if charge_docked[i] else ROBOT_IDS[i].to_upper() + " · DOCK"
 		if charge_labels[i].text != dock_text:
 			charge_labels[i].text = dock_text
-		var robot_text := ROBOT_IDS[i].to_upper() + " · Lv " + str(progression.level(ROBOT_IDS[i])) + (" · " + str(roundi(float(charge_percent[i]))) + "%" if charge_docked[i] else "")
+		var robot_text: String = ROBOT_IDS[i].to_upper() + " · Lv " + str(progression.level(ROBOT_IDS[i])) + (" · " + str(roundi(float(charge_percent[i]))) + "%" if charge_docked[i] else "")
 		if cubot_labels[i].text != robot_text:
 			cubot_labels[i].text = robot_text
 
