@@ -176,3 +176,15 @@ func _delete_template() -> void:
 	var next := templates.duplicate(true)
 	next.erase(templates_picker.get_item_text(templates_picker.selected))
 	status.text = "Template removed." if _persist(next) else "Could not remove template."
+
+func review_project(source: Object, profiles: Object, plan: Array) -> void:
+	engine = source
+	roster = profiles
+	for row in rows:
+		container.remove_child(row["panel"])
+		row["panel"].queue_free()
+	rows.clear()
+	for step in plan:
+		_add_step(step)
+	status.text = "ATLAS draft. Review/edit every worker, tool and payload before approving."
+	UI.show_modal(self)
