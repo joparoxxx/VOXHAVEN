@@ -94,6 +94,10 @@ var sound_enabled := true
 var low_power := false
 var power_check: CheckBox
 var box_meshes := {}
+const Geometry = preload("res://core/rounded_geometry.gd")
+const HQ = preload("res://core/hq_layout.gd")
+var manager_partitions: Array[Node3D] = []
+var wall_details: Node3D
 var sound_player: AudioStreamPlayer
 var tones := {}
 var decoration_slot := 0
@@ -144,16 +148,17 @@ func _ready() -> void:
 		run_png.disabled = true
 
 func _box(parent: Node3D, size: Vector3, position_: Vector3, color: Color) -> MeshInstance3D:
-	var mesh: BoxMesh = box_meshes.get(size)
+	var mesh: Mesh = box_meshes.get(size)
 	if mesh == null:
-		mesh = BoxMesh.new()
-		mesh.size = size
+		var radius := minf(0.15, minf(size.x, minf(size.y, size.z)) * 0.24)
+		mesh = Geometry.rounded_box(size, radius)
 		box_meshes[size] = mesh
 	var node := MeshInstance3D.new()
 	node.mesh = mesh
 	node.position = position_
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
+	mat.roughness = 0.72
 	node.material_override = mat
 	parent.add_child(node)
 	return node
@@ -162,53 +167,106 @@ func _build_office() -> void:
 	var world := WorldEnvironment.new()
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color("#25313c")
+	env.background_color = Color("#243a43")
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color.WHITE
-	env.ambient_light_energy = 0.65
+	env.ambient_light_color = Color("#e7f2ed")
+	env.ambient_light_energy = 0.78
 	world.environment = env
 	add_child(world)
 	var light := DirectionalLight3D.new()
-	light.rotation_degrees = Vector3(-55, -35, 0)
-	light.light_energy = 1.2
+	light.rotation_degrees = Vector3(-58, -35, 0)
+	light.light_color = Color("#fff1d9")
+	light.light_energy = 1.12
 	add_child(light)
+	var fill := DirectionalLight3D.new()
+	fill.rotation_degrees = Vector3(-35, 140, 0)
+	fill.light_color = Color("#b5e3ec")
+	fill.light_energy = 0.28
+	add_child(fill)
 	var camera := Camera3D.new()
-	camera.position = Vector3(8, 9, 12)
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
 	camera.keep_aspect = Camera3D.KEEP_WIDTH
-	camera.size = 13.8
 	add_child(camera)
-	camera.look_at(Vector3(0, 1, 0))
 	camera.current = true
 	office_camera = camera
-	_box(self, Vector3(10, 0.15, 8), Vector3(0, -0.075, 0), Color("#727b85"))
-	back_wall = _box(self, Vector3(10, 2, 0.15), Vector3(0, 1, -4), Color("#aab3bd"))
-	left_wall = _box(self, Vector3(0.15, 2, 8), Vector3(-5, 1, 0), Color("#909ba6"))
-	_reset_camera()
-	for i in range(3):
-		var x := float(i - 1) * 2.7
+	_box(self, Vector3(14.2, 0.38, 12.2), Vector3(0, -0.25, 0), Color("#36535d"))
+	_box(self, Vector3(14, 0.12, 12), Vector3(0, -0.06, 0), Color("#e7e5df"))
+	# Recessed zone floors remain walkable.
+	_box(self, Vector3(5.7, 0.04, 4.3), Vector3(-4, 0.012, -3.75), Color("#c4bba8"))
+	_box(self, Vector3(6.4, 0.04, 4.3), Vector3(3.3, 0.012, -3.75), Color("#b7cfc9"))
+	_box(self, Vector3(12.8, 0.04, 3.9), Vector3(0, 0.012, 3.45), Color("#d0dcd8"))
+	_box(self, Vector3(12.8, 0.035, 1.5), Vector3(0, 0.015, 0), Color("#9db9b6"))
+	back_wall = _box(self, Vector3(14, 1.55, 0.16), Vector3(0, 0.775, -6), Color("#c5d6d4"))
+	left_wall = _box(self, Vector3(0.16, 1.55, 12), Vector3(-7, 0.775, 0), Color("#bccdcb"))
+	wall_details = Node3D.new()
+	add_child(wall_details)
+	_box(wall_details, Vector3(13.8, 0.09, 0.10), Vector3(0, 1.52, -5.91), Color("#70d7b1"))
+	# Manager's private suite. Glass-style tinted low partitions leave a real doorway.
+	for part in HQ.PARTITIONS:
+		var center: Vector3 = part["center"]
+		var half: Vector2 = part["half"]
+		var panel := _box(self, Vector3(half.x * 2, 0.78, half.y * 2), center + Vector3(0,0.39,0), Color("#a5c9c5"))
+		manager_partitions.append(panel)
+		var rail := _box(self, Vector3(half.x * 2, 0.07, half.y * 2 + 0.02), center + Vector3(0,0.82,0), Color("#526f76"))
+		manager_partitions.append(rail)
+	_zone_label("ATLAS  /  MANAGEMENT", Vector3(-4,0.045,-5.55), Color("#6c5d42"))
+	_zone_label("MEETING ROOM", Vector3(3.5,0.045,-5.7), Color("#36535d"))
+	_zone_label("PRODUCTION", Vector3(0,0.045,5.45), Color("#36535d"))
+	_zone_label("SOCIAL CORRIDOR", Vector3(0,0.045,0), Color("#36535d"))
+	for i in range(4):
 		var desk := Node3D.new()
 		add_child(desk)
-		desk.position = Vector3(x, 0, -2.6)
+		desk.position = HQ.DESKS[i]
+		if i > 0:
+			desk.rotation.y = PI
 		desks.append(desk)
-		_box(desk, Vector3(1.8, 0.9, 0.85), Vector3(0, 0.45, 0), Color("#b8bec7"))
-		_box(desk, Vector3(0.85, 0.55, 0.12), Vector3(0, 1.22, -0.15), Color("#263749"))
-		_build_robot(Vector3(x, 0, 0.5), ROBOT_COLORS[i])
-	_box(self, Vector3(1.8, 0.15, 1.3), Vector3(3.5, 0.08, 2.4), Color("#4a6b72"))
-	var nova_desk := Node3D.new()
-	add_child(nova_desk)
-	nova_desk.position = Vector3(-2.5, 0, 2.8)
-	nova_desk.rotation.y = PI
-	desks.append(nova_desk)
-	_box(nova_desk, Vector3(1.8, 0.9, 0.85), Vector3(0, 0.45, 0), Color("#b8bec7"))
-	_box(nova_desk, Vector3(0.85, 0.55, 0.12), Vector3(0, 1.22, -0.15), Color("#263749"))
-	_build_robot(Vector3(0, 0, 2.0), ROBOT_COLORS[3])
+		_build_desk(desk, ROBOT_COLORS[i], i == 0)
+		_build_robot(HQ.SPAWNS[i], ROBOT_COLORS[i])
+	# Conference table with four clear docking positions and a shared project display.
+	_box(self, Vector3(1.7,0.70,0.95), HQ.MEETING_CENTER + Vector3(0,0.40,0), Color("#36535d"))
+	_box(self, Vector3(1.95,0.16,1.1), HQ.MEETING_CENTER + Vector3(0,0.83,0), Color("#e7e5df"))
+	var screen := _box(self, Vector3(0.95,0.07,0.48), HQ.MEETING_CENTER + Vector3(0,0.95,0), Color("#213e48"))
+	screen.material_override.emission_enabled = true
+	screen.material_override.emission = Color("#70d7b1")
+	screen.material_override.emission_energy_multiplier = 0.25
+	for i in range(HQ.SEATS.size()):
+		_box(self, Vector3(0.9,0.025,0.9), HQ.SEATS[i] + Vector3(0,0.04,0), ROBOT_COLORS[i].darkened(0.25))
+	_box(self, Vector3(1.2,0.06,1.2), HQ.LOUNGE + Vector3(0,0.04,0), Color("#537d79"))
+	_box(self, Vector3(1.2,0.65,0.6), HQ.LAB + Vector3(0,0.35,0), Color("#36535d"))
+	_box(self, Vector3(1.25,0.12,0.65), HQ.LAB + Vector3(0,0.73,0), Color("#d0dcd8"))
+	_zone_label("UPGRADE LAB", HQ.LAB + Vector3(0,0.045,0.9), Color("#36535d"))
 	_refresh_hired_robot()
 	_restore_layout()
 	decorations = Node3D.new()
 	add_child(decorations)
 	_refresh_decorations()
 	_rebuild_navigation()
+	_reset_camera()
+
+func _zone_label(value: String, pos: Vector3, color: Color) -> void:
+	var label := Label3D.new()
+	label.text = value
+	label.font_size = 36
+	label.pixel_size = 0.006
+	label.position = pos
+	label.rotation.x = -PI / 2.0
+	label.modulate = color
+	label.outline_size = 0
+	add_child(label)
+
+func _build_desk(desk: Node3D, accent: Color, executive: bool) -> void:
+	var width := 2.05 if executive else 1.8
+	_box(desk, Vector3(width,0.15,0.9), Vector3(0,0.85,0), Color("#f0ede5"))
+	for side in [-1,1]:
+		_box(desk, Vector3(0.32,0.74,0.74), Vector3(side * (width / 2.0 - 0.23),0.38,0), Color("#526e75"))
+	_box(desk, Vector3(width - 0.18,0.08,0.08), Vector3(0,0.77,0.43), accent)
+	_box(desk, Vector3(0.93,0.54,0.15), Vector3(0,1.23,-0.18), Color("#263e47"))
+	var screen := _box(desk, Vector3(0.82,0.44,0.035), Vector3(0,1.23,-0.09), accent.darkened(0.35))
+	screen.material_override.emission_enabled = true
+	screen.material_override.emission = accent
+	screen.material_override.emission_energy_multiplier = 0.16
+	_box(desk, Vector3(0.15,0.22,0.15), Vector3(0,0.99,-0.18), Color("#526e75"))
+	_box(desk, Vector3(0.52,0.055,0.18), Vector3(0,0.96,0.20), Color("#839da0"))
 
 func _build_robot(position_: Vector3, color: Color) -> void:
 	var robot := Node3D.new()
@@ -572,7 +630,7 @@ func _start_queued() -> void:
 	_end_conversation()
 	_stop_ambient()
 	var station: int = workstation_ids[selected]
-	var target := desks[station].position + Vector3(0, 0, -1.6 if station == 3 else 1.6)
+	var target := HQ.work_target(station, desks[station].position)
 	route = navigator.route(robots[selected].position, target)
 	if route.is_empty():
 		status.text = "No clear route to workstation. Task remains queued."
@@ -1051,55 +1109,53 @@ func _rebuild_navigation() -> void:
 		if i == 3 and not roster.is_active("nova"):
 			continue
 		navigator.block_box(desks[i].position, Vector2(1.35, 0.85))
-	navigator.block_box(Vector3(3.5, 0, 2.4), Vector2(1.35, 1.1))
+	HQ.block_fixed(navigator)
 
 func _restore_layout() -> void:
 	var saved: Dictionary = layout_store.read("layout", "", 16384)
 	if not saved.get("ok", false) or not saved.get("found", false):
 		return
 	var raw: Variant = JSON.parse_string(str(saved.get("value", "")))
-	if not raw is Dictionary or raw.get("version") != 1:
+	if not raw is Dictionary or raw.get("version") not in [1,2]:
 		return
-	var offsets: Variant = raw.get("desks")
-	var stations: Variant = raw.get("stations")
-	var colors: Variant = raw.get("colors")
-	if not offsets is Array or offsets.size() != 3 or not stations is Array or stations.size() != 3 or not colors is Array or colors.size() != 3:
-		return
-	var assigned: Array[int] = []
-	for i in range(3):
-		if not (offsets[i] is float or offsets[i] is int) or not (is_equal_approx(float(offsets[i]), -3.0) or is_equal_approx(float(offsets[i]), -2.6) or is_equal_approx(float(offsets[i]), -2.1)):
-			return
-		if not (stations[i] is float or stations[i] is int) or float(stations[i]) != int(stations[i]) or int(stations[i]) not in [0, 1, 2] or int(stations[i]) in assigned:
-			return
-		assigned.append(int(stations[i]))
-		if not colors[i] is String or not Color.html_is_valid(colors[i]):
-			return
-	var variant_slot: Variant = raw.get("decor_slot", 0)
-	if (variant_slot is int or variant_slot is float) and int(variant_slot) in [0, 1]:
-		decoration_slot = int(variant_slot)
+	var colors: Variant = raw.get("colors", [])
+	if colors is Array:
+		for i in range(mini(colors.size(), robots.size())):
+			if colors[i] is String and Color.html_is_valid(colors[i]):
+				robot_bodies[i].material_override.albedo_color = Color.html(colors[i])
+	decoration_slot = clampi(int(raw.get("decor_slot", 0)), 0, 1)
 	ambient_enabled = raw.get("ambient", true) == true
 	sound_enabled = raw.get("sound", true) == true
 	low_power = raw.get("low_power", false) == true
-	var desk_x: Variant = raw.get("desk_x", [])
-	if desk_x is Array and desk_x.size() == 3:
-		for i in range(3):
-			var center := float(i - 1) * 2.7
-			if (desk_x[i] is int or desk_x[i] is float) and absf(float(desk_x[i]) - center) <= 0.25:
-				desks[i].position.x = float(desk_x[i])
-	for i in range(3):
-		desks[i].position.z = float(offsets[i])
-		workstation_ids[i] = assigned[i]
-		robot_bodies[i].material_override.albedo_color = Color.html(colors[i])
+	# v1 graybox coordinates are intentionally reset, but colors/preferences survive.
+	if raw.get("version") != 2:
+		return
+	var offsets: Variant = raw.get("offsets", [])
+	if offsets is Array and offsets.size() == 4:
+		for i in range(1,4):
+			var pair: Variant = offsets[i]
+			if pair is Array and pair.size() == 2 and (pair[0] is int or pair[0] is float) and (pair[1] is int or pair[1] is float):
+				desks[i].position = HQ.DESKS[i] + Vector3(clampf(float(pair[0]),-0.25,0.25),0,clampf(float(pair[1]),-0.25,0.25))
+	var stations: Variant = raw.get("stations", [])
+	if stations is Array and stations.size() == 4 and stations[0] == 0:
+		var valid := true
+		var seen := [0]
+		for i in range(1,4):
+			if stations[i] not in [1,2,3] or stations[i] in seen:
+				valid = false
+			seen.append(stations[i])
+		if valid and (roster.is_active("nova") or stations[3] == 3):
+			for i in range(4):
+				workstation_ids[i] = int(stations[i])
 
 func _save_layout() -> bool:
 	var offsets := []
 	var colors := []
-	var x_offsets := []
-	for i in range(3):
-		offsets.append(desks[i].position.z)
-		x_offsets.append(desks[i].position.x)
+	for i in range(4):
+		var delta: Vector3 = desks[i].position - HQ.DESKS[i]
+		offsets.append([delta.x,delta.z])
 		colors.append(robot_bodies[i].material_override.albedo_color.to_html(false))
-	return layout_store.write("layout", JSON.stringify({"version": 1, "desks": offsets, "stations": workstation_ids.slice(0, 3), "colors": colors, "decor_slot": decoration_slot, "ambient": ambient_enabled, "sound": sound_enabled, "desk_x": x_offsets, "low_power": low_power}))
+	return layout_store.write("layout", JSON.stringify({"version":2,"offsets":offsets,"stations":workstation_ids,"colors":colors,"decor_slot":decoration_slot,"ambient":ambient_enabled,"sound":sound_enabled,"low_power":low_power}))
 
 func _build_layout_dialog() -> void:
 	build_dialog = Window.new()
@@ -1180,7 +1236,11 @@ func _move_desk(direction: int) -> void:
 	var index := desk_picker.selected
 	if index < 0 or busy:
 		return
-	var positions := [-3.0, -2.6, -2.1]
+	if index == 0:
+		layout_status.text = "ATLAS has a dedicated executive desk."
+		return
+	var base: float = HQ.DESKS[index].z
+	var positions := [base - 0.25, base, base + 0.25]
 	var old := desks[index].position.z
 	var nearest := 0
 	for i in range(positions.size()):
@@ -1205,6 +1265,9 @@ func _assign_station() -> void:
 	var robot := robot_picker.selected
 	var station := station_picker.selected
 	if robot < 0 or station < 0 or busy:
+		return
+	if robot == 0 or station == 0:
+		layout_status.text = "ATLAS keeps the executive workstation."
 		return
 	var old: Array = workstation_ids.duplicate()
 	var other := workstation_ids.find(station)
@@ -1285,15 +1348,15 @@ func _pan_camera(relative: Vector2) -> void:
 	var forward := office_camera.global_basis.z
 	forward.y = 0
 	var target := camera_target - right.normalized() * relative.x * scale_ - forward.normalized() * relative.y * scale_
-	target.x = clampf(target.x, -4.0, 4.0)
-	target.z = clampf(target.z, -3.0, 3.0)
+	target.x = clampf(target.x, -6.0, 6.0)
+	target.z = clampf(target.z, -5.0, 5.0)
 	camera_target = target
 	_apply_camera_pose()
 
 func _reset_camera() -> void:
-	office_camera.size = 13.8
+	office_camera.size = 18.0
 	camera_target = Vector3(0, 1, 0)
-	var original := Vector3(8, 8, 12)
+	var original := Vector3(12, 12, 18)
 	orbit_angles = CameraMath.angles(original)
 	orbit_distance = original.length()
 	_apply_camera_pose()
@@ -1313,6 +1376,10 @@ func _apply_camera_pose() -> void:
 	# Cut away the wall on the camera-facing side so the office stays visible.
 	if is_instance_valid(back_wall):
 		back_wall.visible = offset.z >= -0.5
+	if is_instance_valid(wall_details):
+		wall_details.visible = offset.z >= -0.5
+	for panel in manager_partitions:
+		panel.visible = offset.z >= -0.5 and offset.x >= -0.5
 	if is_instance_valid(left_wall):
 		left_wall.visible = offset.x >= -0.5
 
@@ -1344,28 +1411,28 @@ func _refresh_decorations() -> void:
 		decorations.remove_child(child)
 		child.queue_free()
 	var upgrades: Array = company.snapshot()["upgrades"]
-	var plant_x := -4.3 if decoration_slot == 0 else 4.3
+	var plant_x := -6.6 if decoration_slot == 0 else 6.6
 	var lamp_x := -plant_x
 	if "plant" in upgrades:
-		_box(decorations, Vector3(0.45, 0.45, 0.45), Vector3(plant_x, 0.225, -3.35), Color("#ad7952"))
-		_box(decorations, Vector3(0.65, 0.65, 0.65), Vector3(plant_x, 0.75, -3.35), Color("#468b58"))
+		_box(decorations, Vector3(0.45, 0.45, 0.45), Vector3(plant_x, 0.225, -5.6), Color("#ad7952"))
+		_box(decorations, Vector3(0.65, 0.65, 0.65), Vector3(plant_x, 0.75, -5.6), Color("#468b58"))
 	if "lounge" in upgrades:
-		_box(decorations, Vector3(1.2, 0.4, 0.8), Vector3(3.5, 0.35, 2.4), Color("#527d82"))
-		_box(decorations, Vector3(1.2, 0.65, 0.18), Vector3(3.5, 0.65, 2.75), Color("#36585d"))
+		_box(decorations, Vector3(1.2, 0.4, 0.8), HQ.LOUNGE + Vector3(0,0.35,0), Color("#527d82"))
+		_box(decorations, Vector3(1.2, 0.65, 0.18), HQ.LOUNGE + Vector3(0,0.65,0.35), Color("#36585d"))
 	if "lamp" in upgrades:
-		_box(decorations, Vector3(0.2, 0.2, 0.2), Vector3(lamp_x, 0.1, -3.3), Color("#586475"))
-		_box(decorations, Vector3(0.08, 1.5, 0.08), Vector3(lamp_x, 0.85, -3.3), Color("#738297"))
-		_box(decorations, Vector3(0.4, 0.18, 0.4), Vector3(lamp_x, 1.7, -3.3), Color("#f5d998"))
+		_box(decorations, Vector3(0.2, 0.2, 0.2), Vector3(lamp_x, 0.1, -5.6), Color("#586475"))
+		_box(decorations, Vector3(0.08, 1.5, 0.08), Vector3(lamp_x, 0.85, -5.6), Color("#738297"))
+		_box(decorations, Vector3(0.4, 0.18, 0.4), Vector3(lamp_x, 1.7, -5.6), Color("#f5d998"))
 	if "bookshelf" in upgrades:
-		_box(decorations, Vector3(0.25, 1.5, 1.25), Vector3(-4.75, 0.75, -0.5), Color("#66574e"))
+		_box(decorations, Vector3(0.25, 1.5, 1.25), Vector3(-6.75, 0.75, 4.3), Color("#66574e"))
 		for row in range(3):
-			_box(decorations, Vector3(0.28, 0.055, 1.2), Vector3(-4.61, 0.25 + row * 0.45, -0.5), Color("#d1a97d"))
+			_box(decorations, Vector3(0.28, 0.055, 1.2), Vector3(-6.61, 0.25 + row * 0.45, 4.3), Color("#d1a97d"))
 			for book in range(4):
-				_box(decorations, Vector3(0.16, 0.32, 0.19), Vector3(-4.57, 0.42 + row * 0.45, -0.92 + book * 0.23), Color.from_hsv(float(book + row) / 7.0, 0.45, 0.75))
+				_box(decorations, Vector3(0.16, 0.32, 0.19), Vector3(-6.57, 0.42 + row * 0.45, 3.88 + book * 0.23), Color.from_hsv(float(book + row) / 7.0, 0.45, 0.75))
 	if "whiteboard" in upgrades:
-		_box(decorations, Vector3(2.2, 0.75, 0.06), Vector3(0, 1.47, -3.89), Color("#e5edef"))
+		_box(decorations, Vector3(2.2, 0.75, 0.06), Vector3(3.5, 1.47, -5.89), Color("#e5edef"))
 		for line in range(3):
-			_box(decorations, Vector3(1.25 - line * 0.15, 0.035, 0.015), Vector3(-0.15, 1.68 - line * 0.17, -3.85), Color("#6d8e99"))
+			_box(decorations, Vector3(1.25 - line * 0.15, 0.035, 0.015), Vector3(3.35, 1.68 - line * 0.17, -5.85), Color("#6d8e99"))
 
 func _show_workflow_builder() -> void:
 	if not busy and not ai_console.online_busy:
@@ -1442,7 +1509,7 @@ func _update_ambient(delta: float) -> void:
 		for j in range(desks.size()):
 			if desks[j].visible:
 				plan.block_box(desks[j].position, Vector2(1.35, 0.85))
-		plan.block_box(Vector3(3.5, 0, 2.4), Vector2(1.35, 1.1))
+		HQ.block_fixed(plan)
 		for j in range(robots.size()):
 			if i != j and robots[j].visible:
 				plan.block_box(robots[j].position, Vector2(0.85, 0.85))
@@ -1454,7 +1521,7 @@ func _update_ambient(delta: float) -> void:
 			var best: Array[Vector3] = []
 			for direction in [Vector3(1.5, 0, 0), Vector3(-1.5, 0, 0), Vector3(0, 0, 1.5), Vector3(0, 0, -1.5)]:
 				var target: Vector3 = robots[j].position + direction
-				if absf(target.x) > 4.0 or absf(target.z) > 3.0:
+				if absf(target.x) > 6.5 or absf(target.z) > 5.5:
 					continue
 				var candidate: Array[Vector3] = plan.route(robots[i].position, target)
 				if not candidate.is_empty() and (best.is_empty() or candidate.size() < best.size()):
@@ -1571,9 +1638,9 @@ func _play_tone(id: String) -> void:
 
 func _move_desk_x(direction: int) -> void:
 	var index := desk_picker.selected
-	if index < 0 or index >= 3 or busy:
+	if index <= 0 or index >= 4 or busy:
 		return
-	var center := float(index - 1) * 2.7
+	var center: float = HQ.DESKS[index].x
 	var old := desks[index].position.x
 	desks[index].position.x = clampf(old + direction * 0.25, center - 0.25, center + 0.25)
 	for robot in robots:
