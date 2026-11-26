@@ -3,7 +3,12 @@ const World = preload("res://world/voxel_world.gd")
 const Mesher = preload("res://world/chunk_mesh.gd")
 func _initialize() -> void:
 	var world := World.new(123)
-	var mesh := Mesher.build(world,Vector2i.ZERO)
+	var thread := Thread.new()
+	if thread.start(Mesher.generate.bind(world,Vector2i.ZERO)) != OK:
+		quit(1)
+		return
+	var generated: Array = thread.wait_to_finish()
+	var mesh := Mesher.upload(generated)
 	var ok := mesh.get_surface_count() == 1
 	if ok:
 		var arrays := mesh.surface_get_arrays(0)

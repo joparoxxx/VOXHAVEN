@@ -68,3 +68,20 @@ func generate_chunk(chunk: Vector2i) -> PackedByteArray:
 			for x in CHUNK_SIZE:
 				data[(y * CHUNK_SIZE + z) * CHUNK_SIZE + x] = block_at(Vector3i(chunk.x * CHUNK_SIZE + x, y, chunk.y * CHUNK_SIZE + z))
 	return data
+
+## Prefer flat grassland or forest with solid ground and headroom.
+func find_spawn() -> Vector3i:
+	for radius in range(0,65,4):
+		for z in range(-radius,radius+1,4):
+			for x in range(-radius,radius+1,4):
+				if maxi(absi(x),absi(z)) != radius: continue
+				var biome := biome_at(x,z)
+				if biome != Biome.GRASSLAND and biome != Biome.FOREST: continue
+				var y := surface_at(x,z)
+				var p := Vector3i(x,y,z)
+				if block_at(p) != Block.GRASS or block_at(p+Vector3i.UP) != Block.AIR or block_at(p+Vector3i.UP*2) != Block.AIR: continue
+				var flat := true
+				for d in [Vector2i.LEFT,Vector2i.RIGHT,Vector2i.UP,Vector2i.DOWN]:
+					if absi(surface_at(x+d.x,z+d.y)-y)>1: flat = false
+				if flat: return p
+	return Vector3i(8,surface_at(8,8),8)

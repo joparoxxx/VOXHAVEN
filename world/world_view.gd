@@ -4,6 +4,10 @@ const Mesher = preload("res://world/chunk_mesh.gd")
 const Save = preload("res://world/world_save.gd")
 const SAVE_PATH := "user://world.json"
 const RADIUS := 1
+var worker := Thread.new()
+var active_key := Vector2i.ZERO
+var revision := 0
+var active_revision := 0
 var place_mode := false
 var status: Label
 var world := World.new(123)
@@ -20,7 +24,8 @@ func _ready() -> void:
 	if not "--world-smoke" in OS.get_cmdline_user_args():
 		var restored := Save.restore(SAVE_PATH)
 		if restored != null: world = restored
-	focus.y = world.surface_at(8,8)+1
+	var spawn := world.find_spawn()
+	focus = Vector3(spawn)+Vector3(0.5,1.0,0.5)
 	material.vertex_color_use_as_albedo = true
 	material.roughness = 1.0
 	var light := DirectionalLight3D.new()
@@ -93,17 +98,32 @@ func refresh_chunks() -> void:
 			if not chunks.has(key): pending.append(key)
 
 func _process(_delta: float) -> void:
-	if not pending.is_empty():
-		var key: Vector2i = pending.pop_front()
-		build_chunk(key)
-	if "--world-smoke" in OS.get_cmdline_user_args() and pending.is_empty():
+	if worker.is_started() and not worker.is_alive():
+		var arrays: Array = worker.wait_to_finish()
+		if active_revision == revision and in_window(active_key):
+			build_chunk(active_key,Mesher.upload(arrays))
+		elif in_window(active_key) and not pending.has(active_key):
+			pending.append(active_key)
+	if not worker.is_started() and not pending.is_empty():
+		active_key = pending.pop_front()
+		active_revision = revision
+		var snapshot := World.new(world.world_seed)
+		snapshot.edits = world.edits.duplicate()
+		if worker.start(Mesher.generate.bind(snapshot,active_key)) != OK:
+			build_chunk(active_key,Mesher.build(snapshot,active_key))
+	if "--world-smoke" in OS.get_cmdline_user_args() and pending.is_empty() and not worker.is_started():
 		get_tree().quit(0 if chunks.size() == 9 else 1)
 
-func build_chunk(key: Vector2i) -> void:
+func in_window(key: Vector2i) -> bool:
+	return absi(key.x-center_chunk.x)<=RADIUS and absi(key.y-center_chunk.y)<=RADIUS
+
+func _exit_tree() -> void:
+	if worker.is_started(): worker.wait_to_finish()
+
+func build_chunk(key: Vector2i, mesh: ArrayMesh) -> void:
 	if chunks.has(key):
 		chunks[key].queue_free()
 		chunks.erase(key)
-	var mesh := Mesher.build(world,key)
 	var node := MeshInstance3D.new()
 	node.mesh = mesh
 	node.material_override = material
@@ -114,6 +134,7 @@ func build_chunk(key: Vector2i) -> void:
 
 func edit_block(p: Vector3i, block: int) -> bool:
 	if not world.set_block(p,block): return false
+	revision += 1
 	var key := world.chunk_of(p)
 	for offset in [Vector2i.ZERO,Vector2i.LEFT,Vector2i.RIGHT,Vector2i.UP,Vector2i.DOWN]:
 		var affected: Vector2i = key+offset

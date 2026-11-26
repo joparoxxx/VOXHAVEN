@@ -4,8 +4,13 @@ const DIRS = [Vector3i(1,0,0),Vector3i(-1,0,0),Vector3i(0,1,0),Vector3i(0,-1,0),
 const COLORS = [Color.TRANSPARENT,Color("638b42"),Color("79563b"),Color("85858a"),Color("d6bf83"),Color("e4eef4"),Color("45434b"),Color("b77950"),Color("a9b8c2"),Color("d8ad42")]
 
 static func build(world: World, chunk: Vector2i) -> ArrayMesh:
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	return upload(generate(world,chunk))
+
+static func generate(world: World, chunk: Vector2i) -> Array:
+	var vertices := PackedVector3Array()
+	var normals := PackedVector3Array()
+	var colors := PackedColorArray()
+	var indices := PackedInt32Array()
 	var data := world.generate_chunk(chunk)
 	var origin := Vector3i(chunk.x * 16,0,chunk.y * 16)
 	var faces := 0
@@ -31,11 +36,24 @@ static func build(world: World, chunk: Vector2i) -> ArrayMesh:
 					var bb := center+u*0.5-v*0.5
 					var c := center+u*0.5+v*0.5
 					var e := center-u*0.5+v*0.5
-					for vertex in [a,c,bb,a,e,c]:
-						st.set_normal(n)
-						st.set_color(COLORS[block])
-						st.add_vertex(vertex)
+					var base := vertices.size()
+					for vertex in [a,bb,c,e]:
+						vertices.append(vertex)
+						normals.append(n)
+						colors.append(COLORS[block])
+					for index in [0,2,1,0,3,2]:
+						indices.append(base+index)
 					faces += 1
-	if faces == 0: return ArrayMesh.new()
-	st.index()
-	return st.commit()
+	var arrays := []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = vertices
+	arrays[Mesh.ARRAY_NORMAL] = normals
+	arrays[Mesh.ARRAY_COLOR] = colors
+	arrays[Mesh.ARRAY_INDEX] = indices
+	return arrays
+
+static func upload(arrays: Array) -> ArrayMesh:
+	var mesh := ArrayMesh.new()
+	if not arrays[Mesh.ARRAY_VERTEX].is_empty():
+		mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
+	return mesh
