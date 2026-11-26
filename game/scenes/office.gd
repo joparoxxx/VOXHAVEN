@@ -99,8 +99,14 @@ var tones := {}
 var decoration_slot := 0
 var idle_check: CheckBox
 var sound_check: CheckBox
-var interaction_until := 0.0
+const Social = preload("res://core/robot_social.gd")
+var body_pivots: Array[Node3D] = []
+var speech_labels: Array[Label3D] = []
 var interaction_ids: Array[int] = []
+var dialogue_lines: Array[String] = []
+var dialogue_turn := 0
+var dialogue_elapsed := 0.0
+var ambient_partner := -1
 const Snapshot = preload("res://core/snapshot_store.gd")
 var layout_store = Snapshot.new("user://cubyte/office", "layout.json")
 var build_dialog: Window
@@ -241,26 +247,40 @@ func _build_robot(position_: Vector3, color: Color) -> void:
 	roller.material_override = mat
 	robot.add_child(roller)
 	wheels.append(roller)
-	robot_bodies.append(_box(robot, Vector3(0.82, 0.82, 0.82), Vector3(0, 0.79, 0), color))
-	var marker := _box(robot, Vector3(0.16, 0.12, 0.08), Vector3(0.28, 1.26, 0.28), Color("#f5d998"))
+	var pivot := Node3D.new()
+	robot.add_child(pivot)
+	body_pivots.append(pivot)
+	var bubble := Label3D.new()
+	bubble.position.y = 2.05
+	bubble.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	bubble.font_size = 34
+	bubble.pixel_size = 0.006
+	bubble.outline_size = 12
+	bubble.modulate = Color("#f8f5e9")
+	bubble.no_depth_test = true
+	bubble.hide()
+	robot.add_child(bubble)
+	speech_labels.append(bubble)
+	robot_bodies.append(_box(pivot, Vector3(0.82, 0.82, 0.82), Vector3(0, 0.79, 0), color))
+	var marker := _box(pivot, Vector3(0.16, 0.12, 0.08), Vector3(0.28, 1.26, 0.28), Color("#f5d998"))
 	marker.hide()
 	equipment_markers.append(marker)
-	_box(robot, Vector3(0.7, 0.09, 0.7), Vector3(0, 1.245, 0), color.lightened(0.25))
-	_box(robot, Vector3(0.62, 0.10, 0.62), Vector3(0, 0.34, 0), Color("#263544"))
+	_box(pivot, Vector3(0.7, 0.09, 0.7), Vector3(0, 1.245, 0), color.lightened(0.25))
+	_box(pivot, Vector3(0.62, 0.10, 0.62), Vector3(0, 0.34, 0), Color("#263544"))
 	for side in [-1, 1]:
-		_box(robot, Vector3(0.035, 0.35, 0.26), Vector3(side * 0.43, 0.82, -0.14), Color("#304154"))
+		_box(pivot, Vector3(0.035, 0.35, 0.26), Vector3(side * 0.43, 0.82, -0.14), Color("#304154"))
 		for slit in range(3):
-			_box(robot, Vector3(0.038, 0.025, 0.17), Vector3(side * 0.45, 0.72 + slit * 0.075, -0.14), Color("#8ba9b6"))
-	_box(robot, Vector3(0.14, 0.12, 0.06), Vector3(-0.22, 1.08, -0.43), Color("#a7e7cb"))
-	_box(robot, Vector3(0.65, 0.56, 0.04), Vector3(0, 0.82, 0.43), Color("#101b29"))
+			_box(pivot, Vector3(0.038, 0.025, 0.17), Vector3(side * 0.45, 0.72 + slit * 0.075, -0.14), Color("#8ba9b6"))
+	_box(pivot, Vector3(0.14, 0.12, 0.06), Vector3(-0.22, 1.08, -0.43), Color("#a7e7cb"))
+	_box(pivot, Vector3(0.65, 0.56, 0.04), Vector3(0, 0.82, 0.43), Color("#101b29"))
 	var pair: Array[MeshInstance3D] = []
 	for side in [-1, 1]:
-		pair.append(_box(robot, Vector3(0.10, 0.17, 0.035), Vector3(side * 0.15, 0.88, 0.46), Color("#83f5df")))
-		_box(robot, Vector3(0.18, 0.13, 0.14), Vector3(side * 0.49, 0.84, 0), Color("#b9c5d0"))
-		_box(robot, Vector3(0.13, 0.37, 0.13), Vector3(side * 0.59, 0.67, 0), Color("#7b8b9d"))
-		_box(robot, Vector3(0.19, 0.13, 0.18), Vector3(side * 0.59, 0.48, 0.04), color)
+		pair.append(_box(pivot, Vector3(0.10, 0.17, 0.035), Vector3(side * 0.15, 0.88, 0.46), Color("#83f5df")))
+		_box(pivot, Vector3(0.18, 0.13, 0.14), Vector3(side * 0.49, 0.84, 0), Color("#b9c5d0"))
+		_box(pivot, Vector3(0.13, 0.37, 0.13), Vector3(side * 0.59, 0.67, 0), Color("#7b8b9d"))
+		_box(pivot, Vector3(0.19, 0.13, 0.18), Vector3(side * 0.59, 0.48, 0.04), color)
 	eyes.append(pair)
-	mouths.append(_box(robot, Vector3(0.16, 0.045, 0.035), Vector3(0, 0.69, 0.46), Color("#83f5df")))
+	mouths.append(_box(pivot, Vector3(0.16, 0.045, 0.035), Vector3(0, 0.69, 0.46), Color("#83f5df")))
 
 func _build_ui() -> void:
 	var layer := CanvasLayer.new()
@@ -416,6 +436,8 @@ func _build_ui() -> void:
 func _select_cubot(index: int) -> void:
 	if busy or index < -1 or index >= ROBOT_IDS.size() or (index >= 0 and not roster.is_active(ROBOT_IDS[index])):
 		return
+	_end_conversation()
+	_stop_ambient()
 	selected = index
 	for i in range(selection_rings.size()):
 		selection_rings[i].visible = i == index
@@ -518,6 +540,7 @@ func _queue(tool: String, payload: String, requested_by: String = "") -> void:
 	_start_queued()
 
 func _start_queued() -> void:
+	_end_conversation()
 	_stop_ambient()
 	var station: int = workstation_ids[selected]
 	var target := desks[station].position + Vector3(0, 0, -1.6 if station == 3 else 1.6)
@@ -563,17 +586,21 @@ func _process(delta: float) -> void:
 		_update_faces()
 	if not busy:
 		_update_ambient(delta)
+		if selected >= 0 and not _modal_open():
+			_face_target(selected, office_camera.position, delta)
 		return
 	var robot := robots[selected]
 	if not route.is_empty():
 		var waypoint: Vector3 = route[0]
 		var before := robot.position
+		_face_target(selected, waypoint, delta)
 		robot.position = before.move_toward(waypoint, delta * 3.0 * movement_bonus)
 		if robot.position.distance_to(before) > 0.001:
 			wheels[selected].rotate_x(-delta * 8.0 * movement_bonus)
 		if robot.position.distance_to(waypoint) < 0.01:
 			route.pop_front()
 		return
+	_face_target(selected, desks[workstation_ids[selected]].position, delta)
 	progress_timer += delta
 	if progress_timer >= 0.15:
 		cancel_button.disabled = true
@@ -605,8 +632,8 @@ func _update_faces() -> void:
 			face_states[i] = "idle"
 			face_until[i] = 0.0
 		var state: String = face_states[i]
-		if face_clock < interaction_until and i in interaction_ids and state == "idle":
-			state = "greeting"
+		if i in interaction_ids and not dialogue_lines.is_empty() and state == "idle":
+			state = "talking" if i == interaction_ids[Social.speaker(dialogue_turn)] else "listening"
 		if i == selected or state != "idle":
 			last_active[i] = face_clock
 		elif face_clock - last_active[i] > 60.0:
@@ -630,13 +657,17 @@ func _update_faces() -> void:
 			color = Color("#ff7777")
 		elif state == "sleeping":
 			scale_y = 0.12
-		elif state == "greeting":
-			scale_y = 0.55
+		elif state == "talking":
+			scale_y = 0.75
 			color = Color("#f5d998")
+		elif state == "listening":
+			scale_y = 0.85 if not blink else 0.12
+			color = Color("#b6e9df")
 		for eye in eyes[i]:
 			eye.scale.y = scale_y
 			eye.material_override.albedo_color = color
-		mouths[i].scale.x = 1.5 if state == "success" else 1.0
+		mouths[i].scale.x = 1.5 if state == "success" else (1.0 + 0.2 * sin(face_clock * 19.0) if state == "talking" else 1.0)
+		mouths[i].scale.y = 1.0 + 1.4 * absf(sin(face_clock * 14.0)) if state == "talking" else 1.0
 		mouths[i].material_override.albedo_color = color
 
 func _on_task_changed(task: Dictionary) -> void:
@@ -1299,6 +1330,7 @@ func _refresh_hired_robot() -> void:
 
 func _stop_ambient() -> void:
 	ambient_robot = -1
+	ambient_partner = -1
 	ambient_route.clear()
 	ambient_wait = 4.0
 
@@ -1308,19 +1340,31 @@ func _modal_open() -> bool:
 			return true
 	return false
 
+func _face_target(index: int, target: Vector3, delta: float) -> void:
+	var pivot := body_pivots[index]
+	var yaw := Social.heading(robots[index].position, target, pivot.rotation.y)
+	pivot.rotation.y = rotate_toward(pivot.rotation.y, yaw, delta * 5.5)
+
 func _update_ambient(delta: float) -> void:
 	if not ambient_enabled or _modal_open():
+		_end_conversation()
 		_stop_ambient()
+		return
+	if not dialogue_lines.is_empty():
+		_update_conversation(delta)
 		return
 	if ambient_robot >= 0:
 		if ambient_robot == selected or ambient_route.is_empty():
-			if ambient_route.is_empty() and ambient_robot != selected:
-				_greet_nearby(ambient_robot)
+			var first := ambient_robot
+			var second := ambient_partner
 			_stop_ambient()
+			if first != selected and second >= 0 and second != selected:
+				_begin_conversation(first, second)
 			return
 		var robot := robots[ambient_robot]
 		var point: Vector3 = ambient_route[0]
 		var before := robot.position
+		_face_target(ambient_robot, point, delta)
 		robot.position = before.move_toward(point, delta * 1.25)
 		if before.distance_to(robot.position) > 0.001:
 			wheels[ambient_robot].rotate_x(-delta * 4.0)
@@ -1334,9 +1378,8 @@ func _update_ambient(delta: float) -> void:
 	for attempt in range(ROBOT_IDS.size()):
 		var i := ambient_cursor % ROBOT_IDS.size()
 		ambient_cursor += 1
-		if i == selected or not roster.is_active(ROBOT_IDS[i]):
+		if i == selected or not roster.is_active(ROBOT_IDS[i]) or face_states[i] != "idle":
 			continue
-		var target := Vector3(float(i - 1) * 1.5, 0, 0.5 if fmod(face_clock, 20.0) < 10.0 else 1.5)
 		var plan := Navigation.new()
 		for j in range(desks.size()):
 			if desks[j].visible:
@@ -1345,20 +1388,79 @@ func _update_ambient(delta: float) -> void:
 		for j in range(robots.size()):
 			if i != j and robots[j].visible:
 				plan.block_box(robots[j].position, Vector2(0.85, 0.85))
-		ambient_route = plan.route(robots[i].position, target)
+		# Approach one available colleague from a reachable side.
+		for offset in range(1, ROBOT_IDS.size()):
+			var j := (i + offset) % ROBOT_IDS.size()
+			if j == selected or not robots[j].visible or face_states[j] != "idle":
+				continue
+			var best: Array[Vector3] = []
+			for direction in [Vector3(1.5, 0, 0), Vector3(-1.5, 0, 0), Vector3(0, 0, 1.5), Vector3(0, 0, -1.5)]:
+				var target: Vector3 = robots[j].position + direction
+				if absf(target.x) > 4.0 or absf(target.z) > 3.0:
+					continue
+				var candidate: Array[Vector3] = plan.route(robots[i].position, target)
+				if not candidate.is_empty() and (best.is_empty() or candidate.size() < best.size()):
+					best = candidate
+			if not best.is_empty():
+				ambient_route = best
+				ambient_robot = i
+				ambient_partner = j
+				return
+		# Fall back to a normal patrol if no social approach is reachable.
+		var fallback := Vector3(float(i - 1) * 1.5, 0, 0.5 if fmod(face_clock, 20.0) < 10.0 else 1.5)
+		ambient_route = plan.route(robots[i].position, fallback)
 		if ambient_route.size() > 1:
 			ambient_robot = i
 			return
 
+func _begin_conversation(first: int, second: int) -> void:
+	if first == second or first < 0 or second < 0 or robots[first].position.distance_to(robots[second].position) > 2.0:
+		return
+	dialogue_lines = Social.dialogue(ROBOT_IDS[first], ROBOT_IDS[second])
+	if dialogue_lines.is_empty():
+		return
+	interaction_ids = [first, second]
+	dialogue_turn = 0
+	dialogue_elapsed = 0.0
+	_show_dialogue_line()
 
-func _greet_nearby(index: int) -> void:
-	for i in range(robots.size()):
-		if i != index and robots[i].visible and robots[i].position.distance_to(robots[index].position) < 2.0:
-			interaction_ids = [index, i]
-			interaction_until = face_clock + 2.0
-			last_active[index] = face_clock
-			last_active[i] = face_clock
-			return
+func _show_dialogue_line() -> void:
+	for i in interaction_ids:
+		speech_labels[i].hide()
+	var speaker: int = interaction_ids[Social.speaker(dialogue_turn)]
+	speech_labels[speaker].text = dialogue_lines[dialogue_turn]
+	speech_labels[speaker].show()
+
+func _update_conversation(delta: float) -> void:
+	var first: int = interaction_ids[0]
+	var second: int = interaction_ids[1]
+	_face_target(first, robots[second].position, delta)
+	_face_target(second, robots[first].position, delta)
+	dialogue_elapsed += delta
+	var speaker: int = interaction_ids[Social.speaker(dialogue_turn)]
+	var listener: int = interaction_ids[1 - Social.speaker(dialogue_turn)]
+	body_pivots[speaker].rotation.x = 0.025 * sin(dialogue_elapsed * 8.0)
+	body_pivots[listener].rotation.x = 0.045 * sin(dialogue_elapsed * 3.0)
+	if dialogue_elapsed >= Social.duration(dialogue_lines[dialogue_turn]):
+		body_pivots[speaker].rotation.x = 0.0
+		body_pivots[listener].rotation.x = 0.0
+		dialogue_turn += 1
+		dialogue_elapsed = 0.0
+		if dialogue_turn >= dialogue_lines.size():
+			_end_conversation()
+			ambient_wait = 5.0
+		else:
+			_show_dialogue_line()
+
+func _end_conversation() -> void:
+	for i in interaction_ids:
+		speech_labels[i].hide()
+		body_pivots[i].rotation.x = 0.0
+		mouths[i].scale = Vector3.ONE
+	interaction_ids.clear()
+	dialogue_lines.clear()
+	dialogue_turn = 0
+	dialogue_elapsed = 0.0
 
 func _swap_decorations() -> void:
 	var old := decoration_slot
@@ -1376,6 +1478,7 @@ func _set_ambient(value: bool) -> void:
 	if not _save_layout():
 		ambient_enabled = old
 		idle_check.set_pressed_no_signal(old)
+	_end_conversation()
 	_stop_ambient()
 
 func _set_sound(value: bool) -> void:
