@@ -100,6 +100,11 @@ var ambient_cursor := 0
 var face_update_wait := 0.0
 var ambient_enabled := true
 var sound_enabled := true
+const CubotVoice = preload("res://core/cubot_voice.gd")
+var voice_synth = CubotVoice.new()
+var voice_player: AudioStreamPlayer
+var voice_enabled := true
+var voice_check: CheckBox
 var low_power := false
 var power_check: CheckBox
 var box_meshes := {}
@@ -485,10 +490,12 @@ func _build_ui() -> void:
 	ai_console.visible = false
 	add_child(ai_console)
 	ai_console.proposal_approved.connect(_ai_task)
+	ai_console.voice_reply.connect(_play_voice_reply)
 	team_chat = TeamChat.new()
 	team_chat.hide()
 	add_child(team_chat)
 	team_chat.connect("proposal_approved", _team_task)
+	team_chat.connect("voice_reply", _play_voice_reply)
 	meeting_room = TeamChat.new()
 	meeting_room.set("meeting_mode", true)
 	meeting_room.hide()
@@ -1176,6 +1183,7 @@ func _restore_layout() -> void:
 	decoration_slot = clampi(int(raw.get("decor_slot", 0)), 0, 1)
 	ambient_enabled = raw.get("ambient", true) == true
 	sound_enabled = raw.get("sound", true) == true
+	voice_enabled = raw.get("voice", true) == true
 	low_power = raw.get("low_power", false) == true
 	# v1 graybox coordinates are intentionally reset, but colors/preferences survive.
 	if raw.get("version") != 2:
@@ -1205,7 +1213,7 @@ func _save_layout() -> bool:
 		var delta: Vector3 = desks[i].position - HQ.DESKS[i]
 		offsets.append([delta.x,delta.z])
 		colors.append(robot_bodies[i].material_override.albedo_color.to_html(false))
-	return layout_store.write("layout", JSON.stringify({"version":2,"offsets":offsets,"stations":workstation_ids,"colors":colors,"decor_slot":decoration_slot,"ambient":ambient_enabled,"sound":sound_enabled,"low_power":low_power}))
+	return layout_store.write("layout", JSON.stringify({"version":2,"offsets":offsets,"stations":workstation_ids,"colors":colors,"decor_slot":decoration_slot,"ambient":ambient_enabled,"sound":sound_enabled,"voice":voice_enabled,"low_power":low_power}))
 
 func _build_layout_dialog() -> void:
 	build_dialog = Window.new()
@@ -1250,6 +1258,11 @@ func _build_layout_dialog() -> void:
 	sound_check.button_pressed = sound_enabled
 	sound_check.toggled.connect(_set_sound)
 	column.add_child(sound_check)
+	voice_check = CheckBox.new()
+	voice_check.text = "Expressive Cubot chirps"
+	voice_check.button_pressed = voice_enabled
+	voice_check.toggled.connect(_set_voice)
+	column.add_child(voice_check)
 	power_check = CheckBox.new()
 	power_check.text = "Battery saver (30 FPS)"
 	power_check.button_pressed = low_power
@@ -1621,6 +1634,7 @@ func _show_dialogue_line() -> void:
 	var speaker: int = interaction_ids[Social.speaker(dialogue_turn)]
 	speech_labels[speaker].text = dialogue_lines[dialogue_turn]
 	speech_labels[speaker].show()
+	_play_voice_reply(ROBOT_IDS[speaker], dialogue_lines[dialogue_turn])
 
 func _update_conversation(delta: float) -> void:
 	var first: int = interaction_ids[0]
@@ -1644,6 +1658,8 @@ func _update_conversation(delta: float) -> void:
 			_show_dialogue_line()
 
 func _end_conversation() -> void:
+	if not interaction_ids.is_empty() and is_instance_valid(voice_player):
+		voice_player.stop()
 	for i in interaction_ids:
 		speech_labels[i].hide()
 		body_pivots[i].rotation.x = 0.0
@@ -1680,6 +1696,9 @@ func _set_sound(value: bool) -> void:
 		sound_check.set_pressed_no_signal(old)
 
 func _init_audio() -> void:
+	voice_player = AudioStreamPlayer.new()
+	voice_player.volume_db = -17.0
+	add_child(voice_player)
 	sound_player = AudioStreamPlayer.new()
 	sound_player.volume_db = -18.0
 	add_child(sound_player)
@@ -1847,10 +1866,13 @@ func _meeting_speaker_changed(id: String, line: String) -> void:
 	if meeting_speaker >= 0:
 		speech_labels[meeting_speaker].text = line
 		speech_labels[meeting_speaker].show()
+		_play_voice_reply(id, line)
 		meeting_line_until = face_clock + (20.0 if line == "Thinking…" else 4.0)
 		status.text = id.to_upper() + ": " + line.left(85)
 
 func _end_meeting() -> void:
+	if is_instance_valid(voice_player):
+		voice_player.stop()
 	meeting_active = false
 	meeting_arrivals.clear()
 	meeting_route.clear()
@@ -1870,3 +1892,18 @@ func _review_meeting_plan(plan: Array) -> void:
 	_end_meeting()
 	meeting_plan_pending = true
 	workflow_builder.call("review_project", engine, roster, plan)
+
+func _set_voice(value: bool) -> void:
+	var old := voice_enabled
+	voice_enabled = value
+	if not _save_layout():
+		voice_enabled = old
+		voice_check.set_pressed_no_signal(old)
+	if not voice_enabled and is_instance_valid(voice_player):
+		voice_player.stop()
+
+func _play_voice_reply(id: String, line: String) -> void:
+	if not voice_enabled or not is_instance_valid(voice_player) or not roster.is_active(id) or line.strip_edges().is_empty():
+		return
+	voice_player.stream = voice_synth.clip(id, CubotVoice.mood(line), line.length())
+	voice_player.play()
