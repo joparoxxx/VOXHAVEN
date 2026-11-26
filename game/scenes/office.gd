@@ -350,19 +350,6 @@ func _build_robot(position_: Vector3, color: Color) -> void:
 	nameplate.modulate = color.lightened(0.25)
 	robot.add_child(nameplate)
 	cubot_labels.append(nameplate)
-	var roller := MeshInstance3D.new()
-	var sphere := SphereMesh.new()
-	sphere.radius = 0.23
-	sphere.height = 0.46
-	sphere.radial_segments = 16
-	sphere.rings = 8
-	roller.mesh = sphere
-	roller.position.y = 0.23
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color("#20252e")
-	roller.material_override = mat
-	robot.add_child(roller)
-	wheels.append(roller)
 	var pivot := Node3D.new()
 	robot.add_child(pivot)
 	body_pivots.append(pivot)
@@ -377,6 +364,24 @@ func _build_robot(position_: Vector3, color: Color) -> void:
 	bubble.hide()
 	robot.add_child(bubble)
 	speech_labels.append(bubble)
+	if _try_edited_cubot(robot, pivot, color):
+		var badge := _box(pivot, Vector3(0.16,0.12,0.08), Vector3(0.28,1.16,0.28), Color("#f5d998"))
+		badge.hide()
+		equipment_markers.append(badge)
+		return
+	var roller := MeshInstance3D.new()
+	var sphere := SphereMesh.new()
+	sphere.radius = 0.23
+	sphere.height = 0.46
+	sphere.radial_segments = 16
+	sphere.rings = 8
+	roller.mesh = sphere
+	roller.position.y = 0.23
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color("#20252e")
+	roller.material_override = mat
+	robot.add_child(roller)
+	wheels.append(roller)
 	robot_bodies.append(_box(pivot, Vector3(0.82, 0.82, 0.82), Vector3(0, 0.79, 0), color))
 	var marker := _box(pivot, Vector3(0.16, 0.12, 0.08), Vector3(0.28, 1.26, 0.28), Color("#f5d998"))
 	marker.hide()
@@ -2172,3 +2177,57 @@ func _build_blueprint_lab() -> void:
 	var core := _glow(self,Vector3(0.33,0.33,0.33),p+Vector3(0,1.04,0),Color("#8de7dd"))
 	core.rotation.y = PI/4.0
 	core.rotation.z = PI/6.0
+
+# Use the approved edited GLB when present; keep the procedural model as a safe fallback.
+const EDITED_CUBOT_PATH := "res://assets/models/Cubot-update.glb"
+
+func _try_edited_cubot(robot: Node3D, pivot: Node3D, color: Color) -> bool:
+	if not ResourceLoader.exists(EDITED_CUBOT_PATH, "PackedScene"):
+		return false
+	var asset := load(EDITED_CUBOT_PATH) as PackedScene
+	if asset == null:
+		return false
+	var model := asset.instantiate() as Node3D
+	if model == null:
+		return false
+	var body := model.find_child("*_BodyPivot_Body", true, false) as MeshInstance3D
+	var roller := model.find_child("*_Roller", true, false) as MeshInstance3D
+	var left := model.find_child("*_Eye_L", true, false) as MeshInstance3D
+	var right := model.find_child("*_Eye_R", true, false) as MeshInstance3D
+	var mouth := model.find_child("*_Mouth", true, false) as MeshInstance3D
+	if body == null or roller == null or left == null or right == null or mouth == null:
+		push_warning("Edited Cubot GLB is missing named animation parts; using original model.")
+		model.free()
+		return false
+	for face_part in [body,left,right,mouth]:
+		if face_part.mesh == null or face_part.mesh.get_surface_count() != 1:
+			model.free()
+			return false
+	# Individual materials keep each Cubot's tint and expressions independent.
+	var body_mat := _cubot_local_material(body)
+	body_mat.albedo_color = color
+	for part in [left,right,mouth]:
+		_cubot_local_material(part)
+	for part in model.find_children("*Hand_R*", "MeshInstance3D", true, false):
+		var hand := part as MeshInstance3D
+		if hand.mesh == null:
+			continue
+		for surface in range(hand.mesh.get_surface_count()):
+			var original := hand.get_active_material(surface)
+			if original != null and (String(original.resource_name).contains("Hand_R_material") or (hand.mesh.get_surface_count() == 2 and surface == 1)):
+				hand.set_surface_override_material(surface,body_mat)
+	pivot.add_child(model)
+	# Separate the roller from the yaw/nod pivot, retaining the source transform.
+	roller.reparent(robot, true)
+	robot_bodies.append(body)
+	wheels.append(roller)
+	var pair: Array[MeshInstance3D] = [left,right]
+	eyes.append(pair)
+	mouths.append(mouth)
+	return true
+
+func _cubot_local_material(part: MeshInstance3D) -> StandardMaterial3D:
+	var source := part.get_active_material(0) as StandardMaterial3D
+	var mat := source.duplicate() as StandardMaterial3D if source != null else StandardMaterial3D.new()
+	part.material_override = mat
+	return mat
