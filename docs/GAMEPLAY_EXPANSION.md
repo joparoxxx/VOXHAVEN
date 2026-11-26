@@ -30,3 +30,11 @@ Owner authorized the next debug build. Run existing Godot CI, gameplay regressio
 - Dedicated project transcript and up to eight archived meetings. Actual Gemini specialist discussion is bounded to one request per selected participant per send, ATLAS last by default. Explicit draft-plan button requests one additional ATLAS response. No unattended calls.
 - Plans are validated against active worker permissions and native writer payload rules, then presented as editable workflow rows. Only player approval enqueues tasks. Sequential execution stops on failure; actual task states and artifacts are accessible for review. Project review shows task engine states, and can optionally be sent to Gemini for discussion.
 - Current limitations: native file tools only, not arbitrary external project automation; no automatic plan execution, no independently autonomous AI conversation, no literal voice audio, no dynamic collision guarantees or fully polished glass doors. The new 3D scene and meeting code have not been compiled or device tested. Static grid check confirms initial three- and four-Cubot seating and return paths; added Godot tests await an authorized CI run.
+
+
+## Approved HQ concept — visual pass and Android validation
+The approved concept is the art-direction reference, not an in-game render. The procedural 18 × 12 HQ includes warm ATLAS management, cool production desks, a project display, a separate right-side three-Cubot charging bay plus ATLAS's private dock, a lounge with rounded seating, a glowing upgrade console, a central planter, edge planters, rounded zone flooring, and cutaway perimeter walls. Geometry and materials are designed for the mobile renderer rather than duplicating all illustrated details.
+
+Idle charging starts after 40 seconds of project inactivity when a Cubot is at or below 75% simulated charge. Full Cubots leave their own docks and resume ambient social activity. Player tasks and meetings take priority. Charge is simulated in the running scene, not a real battery or task execution restriction. Static grid validation covered three- and four-member movement between spawn, meeting and charging locations; runtime behavior and visual fidelity still require device validation.
+
+This commit requests the Godot CI headless regression and Android debug export pipeline on the development branch. Main remains unchanged.
