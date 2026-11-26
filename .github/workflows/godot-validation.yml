@@ -9,7 +9,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
       GODOT_VERSION: '4.4.1'
     steps:
@@ -22,7 +22,12 @@ jobs:
           sudo mv /tmp/godot/Godot* /usr/local/bin/godot
           godot --version
       - name: Install virtual display and Mesa
-        run: sudo apt-get update && sudo apt-get install -y xvfb xauth libgl1-mesa-dri
+        run: sudo apt-get update && sudo apt-get install -y xvfb xauth libgl1-mesa-dri mesa-vulkan-drivers libvulkan1
+      - name: Configure software Vulkan
+        run: |
+          test -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+          echo 'VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json' >> "$GITHUB_ENV"
+          echo 'LIBGL_ALWAYS_SOFTWARE=1' >> "$GITHUB_ENV"
       - name: Import assets
         run: |
           set -o pipefail
