@@ -88,9 +88,12 @@ Start with a proposed three colonists and storage area in a safe seeded world. A
 Commit 90e266103900ee7bdb2942d49d154896eb26a517 uploaded 485 additional model files: Mini-Game Variety 134, Adventurers 39, Character Animations 16, Furniture 53, Skeletons 19, Space Base 57, Fantasy Town 167. Total 1,076 GLB/glTF files across 14 packs, approximately 50 MB on disk. User's Termux import reported zero dependency errors and included CC0 license checks. These counts include animation files and are not necessarily unique meshes. Godot import, rig compatibility and runtime performance are unverified. 45 standalone models and Holiday Bits remain local/pending provenance or license verification.
 
 ### Implementation order (supersedes historical roadmap)
-1. Audit stable/debug-85 Godot project and main asset catalog; identify reusable code, legacy dependencies and test commands. Work on a development branch.
+1. Create a clean Godot 4 project from main on a development branch. Audit the asset catalog only; do not reuse legacy project code, scenes, UI, AI or build configuration.
 2. Create data-driven asset registry and Godot smoke scene; validate representative terrain, humanoid rigs, animation clips, tools and buildings, materials, scale and pivots.
 3. Implement deterministic voxel chunks, block registry, edits, collision, navigation invalidation and save/load tests.
 4. Implement small offline colony vertical slice: three colonists, job reservations, utility selection, bounded planning and execution, mining/woodcutting, hauling and storage.
 5. Add construction and needs, then farming, crafting, equipment, relationships, exploration and progression incrementally.
 6. Test headless logic, smoke scenes, Android build and physical-device performance separately. Initial target 30 FPS; 60 FPS optional subject to profiling. No implementation or test success claims without evidence.
+
+### Clean-slate development decision (owner approved)
+Start a new Godot 4 project from main. Do not migrate or reuse any legacy Godot source, scenes, project settings, UI, AI, persistence or robot mechanics from stable/debug-85 or other old branches. Preserve those branches untouched as historical archives. Reuse only the approved asset library, asset catalog, credits/licenses and current game design documentation. This decision supersedes every earlier instruction to audit or reuse legacy code. Build fresh tests and Android configuration. No new GLB generation at this stage.
