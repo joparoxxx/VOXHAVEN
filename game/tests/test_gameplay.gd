@@ -144,7 +144,7 @@ func _test_camera() -> void:
 	var full_turn := CameraMath.orbit_angles(initial, Vector2(TAU / CameraMath.DRAG_SENSITIVITY, 0))
 	check(is_equal_approx(full_turn.x, initial.x), "full orbit returns to start")
 	check(is_equal_approx(CameraMath.pinch_size(12, 100, 200), 6.0), "pinch zoom in")
-	check(is_equal_approx(CameraMath.pinch_size(12, 300, 100), CameraMath.MAX_ZOOM), "pinch zoom out bounded")
+	check(is_equal_approx(CameraMath.pinch_size(12, 400, 100), CameraMath.MAX_ZOOM), "pinch zoom out bounded")
 	check(is_equal_approx(CameraMath.pinch_size(12, 0, 100), 12.0), "degenerate pinch ignored")
 
 func _test_hq() -> void:

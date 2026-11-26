@@ -218,35 +218,35 @@ func _build_office() -> void:
 	add_child(camera)
 	camera.current = true
 	office_camera = camera
-	_slab(self, Vector3(18.3,0.42,12.3), Vector3(0,-0.27,0), Color("#36535d"),0.65)
-	_slab(self, Vector3(18,0.12,12), Vector3(0,-0.06,0), Color("#e7e5df"),0.60)
-	# Recessed zone floors remain walkable.
-	_slab(self,Vector3(5.7,0.035,4.3),Vector3(-4,0.012,-3.75),Color("#c9b58d"),0.45)
-	_slab(self,Vector3(6.4,0.035,4.3),Vector3(3.3,0.012,-3.75),Color("#a9c6cb"),0.45)
-	_slab(self,Vector3(11.8,0.035,3.0),Vector3(0,0.012,3.65),Color("#a1c8c4"),0.45)
-	_slab(self,Vector3(12.0,0.025,2.0),Vector3(0,0.012,0),Color("#b8ceca"),0.45)
-	_slab(self,Vector3(2.5,0.035,3.0),HQ.LOUNGE+Vector3(0,0.018,0),Color("#d6bb91"),0.5)
-	_slab(self,Vector3(2.5,0.035,2.1),HQ.LAB+Vector3(0,0.018,0),Color("#9bb7bb"),0.4)
-	_slab(self,Vector3(2.6,0.035,6.0),Vector3(7.5,0.018,1),Color("#cfbd97"),0.45)
-	back_wall = _box(self, Vector3(18, 1.55, 0.20), Vector3(0, 0.775, -6), Color("#c5d6d4"))
-	left_wall = _box(self, Vector3(0.20, 1.55, 12), Vector3(-9, 0.775, 0), Color("#bccdcb"))
+	_slab(self, Vector3(30.3,0.42,22.3), Vector3(0,-0.27,0), Color("#36535d"),0.35)
+	_slab(self, Vector3(30,0.12,22), Vector3(0,-0.06,0), Color("#e7e5df"),0.35)
+	# Separate zones; furniture keeps Cubot-scale height instead of scaling the world.
+	_slab(self,Vector3(10.4,0.035,6.7),Vector3(-9,0.012,-7.2),Color("#c9b58d"),0.24)
+	_slab(self,Vector3(13.0,0.035,6.7),Vector3(4,0.012,-7.2),Color("#a9c6cb"),0.24)
+	_slab(self,Vector3(18.0,0.035,5.3),Vector3(0,0.012,7.4),Color("#a1c8c4"),0.24)
+	_slab(self,Vector3(18.0,0.025,3.0),Vector3(0,0.012,1.1),Color("#b8ceca"),0.22)
+	_slab(self,Vector3(5.5,0.035,4.5),HQ.LOUNGE+Vector3(0,0.018,0),Color("#d6bb91"),0.22)
+	_slab(self,Vector3(5.5,0.035,3.0),HQ.LAB+Vector3(0,0.018,0),Color("#9bb7bb"),0.22)
+	_slab(self,Vector3(4.5,0.035,10.0),Vector3(12,0.018,0),Color("#cfbd97"),0.22)
+	back_wall = _box(self, Vector3(30, 1.55, 0.20), Vector3(0, 0.775, -11), Color("#c5d6d4"))
+	left_wall = _box(self, Vector3(0.20, 1.55, 22), Vector3(-15, 0.775, 0), Color("#bccdcb"))
 	front_wall = Node3D.new()
 	add_child(front_wall)
-	_box(front_wall,Vector3(7.65,0.75,0.20),Vector3(-5.15,0.375,6),Color("#b8cdca"))
-	_box(front_wall,Vector3(7.65,0.75,0.20),Vector3(5.15,0.375,6),Color("#b8cdca"))
+	_box(front_wall,Vector3(13.5,0.75,0.20),Vector3(-8.25,0.375,11),Color("#b8cdca"))
+	_box(front_wall,Vector3(13.5,0.75,0.20),Vector3(8.25,0.375,11),Color("#b8cdca"))
 	right_wall = Node3D.new()
 	add_child(right_wall)
-	_box(right_wall,Vector3(0.20,0.85,12),Vector3(9,0.425,0),Color("#b8cdca"))
-	_slab(self,Vector3(2.4,0.045,0.85),Vector3(0,0.035,5.55),Color("#76bdb5"),0.24)
-	_zone_label("HQ ENTRANCE",Vector3(0,0.085,5.55),Color("#244954"))
+	_box(right_wall,Vector3(0.20,0.85,22),Vector3(15,0.425,0),Color("#b8cdca"))
+	_slab(self,Vector3(3.0,0.045,1.0),Vector3(0,0.035,10.4),Color("#76bdb5"),0.12)
+	_zone_label("HQ ENTRANCE",Vector3(0,0.085,10.4),Color("#244954"))
 	wall_details = Node3D.new()
 	add_child(wall_details)
-	_box(wall_details, Vector3(17.8, 0.09, 0.10), Vector3(0, 1.52, -5.89), Color("#70d7b1"))
-	_build_wall_display(wall_details,Vector3(3.5,1.12,-5.84),Color("#70d7b1"))
-	_build_wall_display(wall_details,Vector3(-4,1.12,-5.84),Color("#eac678"))
-	for x in [-8.2,-6.8,1.0,6.6,8.2]:
-		_box(wall_details,Vector3(0.68,0.70,0.045),Vector3(x,0.98,-5.87),Color("#85b4bf"))
-		_box(wall_details,Vector3(0.74,0.055,0.09),Vector3(x,1.36,-5.85),Color("#e4eee5"))
+	_box(wall_details, Vector3(29.8, 0.09, 0.10), Vector3(0, 1.52, -10.89), Color("#70d7b1"))
+	_build_wall_display(wall_details,Vector3(5,1.12,-10.84),Color("#70d7b1"))
+	_build_wall_display(wall_details,Vector3(-7,1.12,-10.84),Color("#eac678"))
+	for x in [-14,-11.5,-9.5,-2,0,2,8,10.5,13.5]:
+		_box(wall_details,Vector3(0.85,0.70,0.045),Vector3(x,0.98,-10.87),Color("#85b4bf"))
+		_box(wall_details,Vector3(0.90,0.055,0.09),Vector3(x,1.36,-10.85),Color("#e4eee5"))
 	# Manager's private suite. Glass-style tinted low partitions leave a real doorway.
 	for part in HQ.PARTITIONS:
 		var center: Vector3 = part["center"]
@@ -255,10 +255,10 @@ func _build_office() -> void:
 		manager_partitions.append(panel)
 		var rail := _box(self, Vector3(half.x * 2, 0.07, half.y * 2 + 0.02), center + Vector3(0,0.82,0), Color("#526f76"))
 		manager_partitions.append(rail)
-	_zone_label("ATLAS  /  MANAGEMENT", Vector3(-4,0.045,-5.55), Color("#6c5d42"))
-	_zone_label("MEETING ROOM", Vector3(3.5,0.045,-5.7), Color("#36535d"))
-	_zone_label("PRODUCTION", Vector3(0,0.045,4.85), Color("#36535d"))
-	_zone_label("SOCIAL CORRIDOR", Vector3(0,0.045,0.65), Color("#36535d"))
+	_zone_label("ATLAS  /  MANAGEMENT", Vector3(-7,0.045,-10.0), Color("#6c5d42"))
+	_zone_label("MEETING ROOM", Vector3(5,0.045,-10.0), Color("#36535d"))
+	_zone_label("PRODUCTION", Vector3(0,0.045,9.5), Color("#36535d"))
+	_zone_label("SOCIAL CORRIDOR", Vector3(0,0.045,1.1), Color("#36535d"))
 	for i in range(4):
 		var desk := Node3D.new()
 		add_child(desk)
@@ -269,7 +269,10 @@ func _build_office() -> void:
 		_build_desk(desk, ROBOT_COLORS[i], i == 0)
 		_build_robot(HQ.SPAWNS[i], ROBOT_COLORS[i])
 	# Conference table with four clear docking positions and a shared project display.
-	if _furniture(self,"Meeting_Table",HQ.MEETING_CENTER) == null:
+	var meeting_table := _furniture(self,"Meeting_Table",HQ.MEETING_CENTER)
+	if meeting_table != null:
+		meeting_table.scale = Vector3(1.60,1,1.65)
+	else:
 		_slab(self, Vector3(1.7,0.36,0.95), HQ.MEETING_CENTER + Vector3(0,0.18,0), Color("#36535d"),0.12)
 		_slab(self, Vector3(1.95,0.10,1.1), HQ.MEETING_CENTER + Vector3(0,0.41,0), Color("#e7e5df"),0.12)
 	var screen := _box(self, Vector3(0.95,0.04,0.48), HQ.MEETING_CENTER + Vector3(0,0.48,0), Color("#213e48"))
@@ -281,7 +284,7 @@ func _build_office() -> void:
 	_build_blueprint_lounge()
 	_build_blueprint_lab()
 	_plant(self,HQ.PLANTER,0.80)
-	for point in [Vector3(-8.35,0,-5.3),Vector3(8.35,0,-5.3),Vector3(-8.6,0,5.4),Vector3(8.6,0,5.4)]:
+	for point in [Vector3(-14.65,0,-10.6),Vector3(14.65,0,-10.6),Vector3(-14.65,0,10.6),Vector3(14.65,0,10.6)]:
 		_plant(self,point,0.48)
 	_zone_label("UPGRADE LAB", HQ.LAB + Vector3(0,0.045,0.9), Color("#36535d"))
 	_build_charging_docks()
@@ -309,12 +312,11 @@ func _build_desk(desk: Node3D, accent: Color, executive: bool) -> void:
 	if furniture == null:
 		_build_procedural_desk(desk,accent,executive)
 		return
-	if executive:
-		furniture.scale.x = 1.10
+	furniture.scale.x = 1.43 if executive else 1.29
 	_furniture(desk,"Monitor",Vector3(0,0.44,-0.25))
 	_furniture(desk,"Keyboard",Vector3(0,0.44,0.38))
 	_furniture(desk,"Mouse",Vector3(0.40,0.44,0.38))
-	_glow(desk,Vector3(1.5,0.028,0.035),Vector3(0,0.39,0.51),accent)
+	_glow(desk,Vector3(2.0,0.028,0.035),Vector3(0,0.39,0.51),accent)
 
 func _build_procedural_desk(desk: Node3D, accent: Color, executive: bool) -> void:
 	var width := 2.05 if executive else 1.8
@@ -1490,15 +1492,15 @@ func _pan_camera(relative: Vector2) -> void:
 	var forward := office_camera.global_basis.z
 	forward.y = 0
 	var target := camera_target - right.normalized() * relative.x * scale_ - forward.normalized() * relative.y * scale_
-	target.x = clampf(target.x, -8.0, 8.0)
-	target.z = clampf(target.z, -5.0, 5.0)
+	target.x = clampf(target.x, -14.0, 14.0)
+	target.z = clampf(target.z, -10.0, 10.0)
 	camera_target = target
 	_apply_camera_pose()
 
 func _reset_camera() -> void:
-	office_camera.size = 22.0
+	office_camera.size = 36.0
 	camera_target = Vector3(0, 1, 0)
-	var original := Vector3(12, 12, 18)
+	var original := Vector3(19, 21, 30)
 	orbit_angles = CameraMath.angles(original)
 	orbit_distance = original.length()
 	_apply_camera_pose()
@@ -1559,23 +1561,23 @@ func _refresh_decorations() -> void:
 		decorations.remove_child(child)
 		child.queue_free()
 	var upgrades: Array = company.snapshot()["upgrades"]
-	var plant_x := -8.1 if decoration_slot == 0 else 8.1
+	var plant_x := -13.0 if decoration_slot == 0 else 13.0
 	var lamp_x := -plant_x
 	if "plant" in upgrades:
-		_plant(decorations,Vector3(plant_x,0,-5.6),0.48)
+		_plant(decorations,Vector3(plant_x,0,-10.6),0.48)
 	if "lounge" in upgrades:
 		_slab(decorations,Vector3(0.55,0.32,0.55),HQ.LOUNGE+Vector3(0.65,0.19,0.64),Color("#d3ba85"),0.22)
 		_slab(decorations,Vector3(0.55,0.32,0.55),HQ.LOUNGE+Vector3(-0.65,0.19,0.64),Color("#d3ba85"),0.22)
 	if "lamp" in upgrades:
-		_furniture(decorations,"Floor_Lamp",Vector3(lamp_x,0,-5.6))
+		_furniture(decorations,"Floor_Lamp",Vector3(lamp_x,0,-10.6))
 	if "bookshelf" in upgrades:
-		var shelf := _furniture(decorations,"Storage_Shelf",Vector3(-8.75,0,4.3))
+		var shelf := _furniture(decorations,"Storage_Shelf",Vector3(-14.7,0,7.5))
 		if shelf != null:
 			shelf.rotation.y = PI / 2.0
 	if "whiteboard" in upgrades:
-		_box(decorations, Vector3(2.2, 0.75, 0.06), Vector3(5.8, 0.72, -5.84), Color("#e5edef"))
+		_box(decorations, Vector3(2.2, 0.75, 0.06), Vector3(9.3, 0.72, -10.84), Color("#e5edef"))
 		for line in range(3):
-			_box(decorations, Vector3(1.25 - line * 0.15, 0.035, 0.015), Vector3(5.65, 0.93 - line * 0.17, -5.80), Color("#6d8e99"))
+			_box(decorations, Vector3(1.25 - line * 0.15, 0.035, 0.015), Vector3(9.15, 0.93 - line * 0.17, -10.80), Color("#6d8e99"))
 
 func _show_workflow_builder() -> void:
 	if not busy and not meeting_active and not ai_console.online_busy:
@@ -1670,7 +1672,7 @@ func _update_ambient(delta: float) -> void:
 			var best: Array[Vector3] = []
 			for direction in [Vector3(1.5, 0, 0), Vector3(-1.5, 0, 0), Vector3(0, 0, 1.5), Vector3(0, 0, -1.5)]:
 				var target: Vector3 = robots[j].position + direction
-				if absf(target.x) > 8.5 or absf(target.z) > 5.5:
+				if absf(target.x) > 14.5 or absf(target.z) > 10.5:
 					continue
 				var candidate: Array[Vector3] = plan.route(robots[i].position, target)
 				if not candidate.is_empty() and (best.is_empty() or candidate.size() < best.size()):
@@ -1988,11 +1990,11 @@ func _build_charging_docks() -> void:
 		add_child(dock)
 		dock.position = HQ.DOCKS[i]
 		charge_docks.append(dock)
-		_slab(dock,Vector3(1.50,0.045,1.50),Vector3(0,0.025,0),Color("#36535d"),0.18)
-		_slab(dock,Vector3(1.36,0.022,1.36),Vector3(0,0.055,0),Color("#91b6ae"),0.16)
-		_glow(dock,Vector3(0.12,0.018,0.75),Vector3(-0.60,0.076,0),Color("#70d7b1"))
-		_glow(dock,Vector3(0.12,0.018,0.75),Vector3(0.60,0.076,0),Color("#70d7b1"))
-		var light := _box(dock, Vector3(0.9,0.035,0.10), Vector3(0,0.077,-0.64), Color("#70d7b1"))
+		_slab(dock,Vector3(1.80,0.045,1.80),Vector3(0,0.025,0),Color("#36535d"),0.18)
+		_slab(dock,Vector3(1.66,0.022,1.66),Vector3(0,0.055,0),Color("#91b6ae"),0.16)
+		_glow(dock,Vector3(0.12,0.018,0.75),Vector3(-0.75,0.076,0),Color("#70d7b1"))
+		_glow(dock,Vector3(0.12,0.018,0.75),Vector3(0.75,0.076,0),Color("#70d7b1"))
+		var light := _box(dock, Vector3(0.9,0.035,0.10), Vector3(0,0.077,-0.79), Color("#70d7b1"))
 		var material: StandardMaterial3D = light.material_override
 		material.emission_enabled = true
 		material.emission = Color("#70d7b1")
@@ -2000,7 +2002,7 @@ func _build_charging_docks() -> void:
 		charge_lights.append(light)
 		var label := Label3D.new()
 		label.text = ROBOT_IDS[i].to_upper() + " · DOCK"
-		label.position = Vector3(0,0.09,0.65)
+		label.position = Vector3(0,0.09,0.80)
 		label.rotation.x = -PI / 2.0
 		label.font_size = 28
 		label.pixel_size = 0.004
@@ -2008,7 +2010,7 @@ func _build_charging_docks() -> void:
 		label.modulate = Color("#243a43")
 		dock.add_child(label)
 		charge_labels.append(label)
-	_zone_label("CHARGING BAY", Vector3(7.5,0.085,4.35), Color("#36535d"))
+	_zone_label("CHARGING BAY", Vector3(12,0.085,4.75), Color("#36535d"))
 
 func _interrupt_charging() -> void:
 	charge_idle = 0.0
@@ -2173,8 +2175,12 @@ func _plant(parent: Node3D, center: Vector3, size_: float) -> void:
 
 func _build_blueprint_lounge() -> void:
 	var p: Vector3 = HQ.LOUNGE
-	if _furniture(self,"Lounge_Sofa",p+Vector3(0,0,-0.50)) != null:
-		_furniture(self,"Coffee_Table",p+Vector3(0,0,0.42))
+	var sofa := _furniture(self,"Lounge_Sofa",p+Vector3(0,0,-0.85))
+	if sofa != null:
+		sofa.scale.x = 1.5
+		var coffee := _furniture(self,"Coffee_Table",p+Vector3(0,0,0.55))
+		if coffee != null:
+			coffee.scale.x = 1.4
 		_zone_label("LOUNGE",p+Vector3(0,0.09,1.22),Color("#36535d"))
 		return
 	_slab(self,Vector3(1.95,0.03,1.95),p+Vector3(0,0.055,0),Color("#bda37b"),0.65)
