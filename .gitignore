@@ -23,3 +23,15 @@ mono_crash.*.json
 *.exe
 # Uncomment if your project does not version PCK files as runtime dependencies.
 # *.pck
+
+# Local builds and validation outputs
+/build/
+*.apk
+*.aab
+*.pck
+*.log
+*.keystore
+*.jks
+.env
+.env.*
+!.env.example
