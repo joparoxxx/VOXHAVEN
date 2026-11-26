@@ -20,3 +20,6 @@ Mine/place controls use terrain raycasts (right click or touch tap); placement u
 
 ## Background terrain increment
 One worker generates CPU mesh arrays from a private seed/edit snapshot; main thread uploads meshes and creates collision. Revision checks discard stale edit results. Spawn search prefers flat grassland/forest with headroom, with fallback if none found. Mobile profiling, textures, trees and APK automation remain pending.
+
+## Forest decoration increment
+Existing KayKit tree scene is placed deterministically on forest grass with clear space, parented to streamed chunks. Trees are visual only, not yet harvestable or collidable. Individual scene instances are bounded by the chunk window; MultiMesh batching and terrain atlas mapping remain pending.

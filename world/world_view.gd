@@ -2,6 +2,7 @@ extends Node3D
 const World = preload("res://world/voxel_world.gd")
 const Mesher = preload("res://world/chunk_mesh.gd")
 const Save = preload("res://world/world_save.gd")
+const Decor = preload("res://world/terrain_decor.gd")
 const SAVE_PATH := "user://world.json"
 const RADIUS := 1
 var worker := Thread.new()
@@ -130,6 +131,7 @@ func build_chunk(key: Vector2i, mesh: ArrayMesh) -> void:
 	node.position = Vector3(key.x*16,0,key.y*16)
 	add_child(node)
 	if mesh.get_surface_count()>0: node.create_trimesh_collision()
+	Decor.populate(world,key,node)
 	chunks[key] = node
 
 func edit_block(p: Vector3i, block: int) -> bool:

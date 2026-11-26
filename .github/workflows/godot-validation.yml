@@ -59,6 +59,11 @@ jobs:
           set -o pipefail
           timeout 180 godot --headless --path . --script res://tests/world_save_test.gd 2>&1 | tee persistence.log
           if grep -E 'SCRIPT ERROR:|ERROR:' persistence.log; then exit 1; fi
+      - name: Terrain decoration test
+        run: |
+          set -o pipefail
+          timeout 180 godot --headless --path . --script res://tests/terrain_decor_test.gd 2>&1 | tee decor.log
+          if grep -E 'SCRIPT ERROR:|ERROR:' decor.log; then exit 1; fi
       - name: World rendering smoke test
         run: |
           set -o pipefail
