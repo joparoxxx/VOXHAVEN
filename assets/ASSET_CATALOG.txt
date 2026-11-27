@@ -1074,3 +1074,6 @@ assets/library/kenney_fantasy-town-kit_2.0/Models/GLB format/watermill-wide.glb
 assets/library/kenney_fantasy-town-kit_2.0/Models/GLB format/watermill.glb
 assets/library/kenney_fantasy-town-kit_2.0/Models/GLB format/wheel.glb
 assets/library/kenney_fantasy-town-kit_2.0/Models/GLB format/windmill.glb
+assets/library/Quaternius_Cube_World/Environment/Tree_1.gltf
+assets/library/Quaternius_Cube_World/Environment/Tree_2.gltf
+assets/library/Quaternius_Cube_World/Environment/Tree_3.gltf
