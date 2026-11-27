@@ -19,6 +19,8 @@ var active_key := Vector2i.ZERO
 var revision := 0
 var active_revision := 0
 var place_mode := false
+var mining_designations: Dictionary = {}
+var designation_markers: Dictionary = {}
 var status: Label
 var world := World.new(123)
 var chunks: Dictionary = {}
@@ -86,7 +88,7 @@ func _ready() -> void:
 		bar.add_child(zoom_button)
 		zoom_button.pressed.connect(step_zoom.bind(direction))
 	status = Label.new()
-	status.text = "Mine: right click or tap terrain"
+	status.text = "Mine: tap a solid block to designate it"
 	var controls := VBoxContainer.new()
 	controls.position = Vector2(16,76)
 	layer.add_child(controls)
@@ -126,7 +128,7 @@ func test_control(action: String) -> void:
 
 func update_info() -> void:
 	if info == null: return
-	info.text = "FPS: %d | Chunks: %d | Colony time: %ds" % [Engine.get_frames_per_second(),chunks.size(),int(colony.elapsed)]
+	info.text = "FPS: %d | Chunks: %d | Colony time: %ds | Mining jobs: %d" % [Engine.get_frames_per_second(),chunks.size(),int(colony.elapsed),mining_designations.size()]
 	if selected_index >= 0 and selected_index < colony.colonists.size():
 		var c = colony.colonists[selected_index]
 		info.text += "\n%s | %s | HP %d | Hunger %d | Thirst %d | Stamina %d | Mood %d" % [c.display_name,c.activity,int(c.health),int(c.hunger),int(c.thirst),int(c.stamina),int(c.happiness)]
@@ -136,7 +138,7 @@ func select_action(action: String) -> void:
 		status.text = "Saved" if Save.save(world,SAVE_PATH) else "Save failed"
 	else:
 		place_mode = action == "Place"
-		status.text = action + ": right click or tap terrain"
+		status.text = ("Place: tap a surface" if place_mode else "Mine: tap a solid block to designate it")
 
 func pick_block(screen: Vector2) -> void:
 	var start := camera.project_ray_origin(screen)
@@ -146,8 +148,39 @@ func pick_block(screen: Vector2) -> void:
 	if hit.is_empty(): return
 	var point: Vector3 = hit.position + hit.normal*(0.01 if place_mode else -0.01)
 	var p := Vector3i(point.floor())
-	if edit_block(p,World.Block.DIRT if place_mode else World.Block.AIR):
-		status.text = "Block placed" if place_mode else "Block mined"
+	if place_mode:
+		if edit_block(p,World.Block.DIRT): status.text = "Block placed"
+	else:
+		if world.block_at(p) == World.Block.AIR:
+			status.text = "Cannot designate air"
+		elif mining_designations.has(p):
+			remove_mining_designation(p)
+			status.text = "Mining designation cancelled"
+		else:
+			add_mining_designation(p)
+			status.text = "Mining designated at %s" % str(p)
+
+func add_mining_designation(p: Vector3i) -> void:
+	mining_designations[p] = true
+	var marker := MeshInstance3D.new()
+	var cube := BoxMesh.new()
+	cube.size = Vector3.ONE * 1.025
+	marker.mesh = cube
+	var overlay := StandardMaterial3D.new()
+	overlay.albedo_color = Color(1.0, 0.65, 0.1, 0.28)
+	overlay.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	overlay.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	overlay.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+	marker.material_override = overlay
+	marker.position = Vector3(p) + Vector3.ONE * 0.5
+	add_child(marker)
+	designation_markers[p] = marker
+
+func remove_mining_designation(p: Vector3i) -> void:
+	mining_designations.erase(p)
+	if designation_markers.has(p):
+		designation_markers[p].queue_free()
+		designation_markers.erase(p)
 
 func step_zoom(direction: int) -> void:
 	set_zoom(zoom * pow(1.2,direction))
@@ -231,6 +264,7 @@ func build_chunk(key: Vector2i, mesh: ArrayMesh) -> void:
 
 func edit_block(p: Vector3i, block: int) -> bool:
 	if not world.set_block(p,block): return false
+	if mining_designations.has(p): remove_mining_designation(p)
 	revision += 1
 	var key := world.chunk_of(p)
 	for offset in [Vector2i.ZERO,Vector2i.LEFT,Vector2i.RIGHT,Vector2i.UP,Vector2i.DOWN]:
