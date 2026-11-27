@@ -1,9 +1,6 @@
 name: Android prototype APK
 on:
   workflow_dispatch:
-  push:
-    branches: ['game/colony-foundation']
-    paths: ['.github/workflows/android-build.yml']
 permissions:
   contents: read
 jobs:
