@@ -27,6 +27,12 @@ var focus := Vector3(8,28,8)
 var camera: Camera3D
 var material := StandardMaterial3D.new()
 var yaw := 0.7
+var home_focus := Vector3.ZERO
+var simulation_speed := 1.0
+var selected_index := -1
+var info: Label
+var speed_button: Button
+var autosave_elapsed := 0.0
 const MIN_ZOOM := 12.0
 const MAX_ZOOM := 48.0
 var zoom := 32.0
@@ -38,6 +44,7 @@ func _ready() -> void:
 		if restored != null: world = restored
 	var spawn := world.find_spawn()
 	focus = Vector3(spawn)+Vector3(0.5,1.0,0.5)
+	home_focus = focus
 	atlas = Atlas.build_lookup()
 	material.albedo_texture = load(Atlas.ROOT+"block_bits_texture.png")
 	material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
@@ -80,7 +87,49 @@ func _ready() -> void:
 		zoom_button.pressed.connect(step_zoom.bind(direction))
 	status = Label.new()
 	status.text = "Mine: right click or tap terrain"
-	bar.add_child(status)
+	var controls := VBoxContainer.new()
+	controls.position = Vector2(16,76)
+	layer.add_child(controls)
+	var camera_bar := HBoxContainer.new()
+	controls.add_child(camera_bar)
+	for title in ["Rotate L","Rotate R","Reset","Colonist","Focus","1x"]:
+		var button := Button.new()
+		button.text = title
+		button.custom_minimum_size = Vector2(76,48)
+		camera_bar.add_child(button)
+		button.pressed.connect(test_control.bind(title))
+		if title == "1x": speed_button = button
+	controls.add_child(status)
+	info = Label.new()
+	info.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	controls.add_child(info)
+
+func test_control(action: String) -> void:
+	match action:
+		"Rotate L": yaw -= PI/4.0
+		"Rotate R": yaw += PI/4.0
+		"Reset":
+			focus = home_focus
+			yaw = 0.7
+			zoom = 32.0
+		"Colonist":
+			if not colony.colonists.is_empty():
+				selected_index = (selected_index+1)%colony.colonists.size()
+		"Focus":
+			if selected_index >= 0 and selected_index < colony.colonists.size():
+				focus = Vector3(colony.colonists[selected_index].position)+Vector3(0.5,0.5,0.5)
+		"1x":
+			simulation_speed = fmod(simulation_speed+1.0,4.0)
+			speed_button.text = "Pause" if simulation_speed == 0.0 else "%dx" % int(simulation_speed)
+	update_camera()
+	refresh_chunks()
+
+func update_info() -> void:
+	if info == null: return
+	info.text = "FPS: %d | Chunks: %d | Colony time: %ds" % [Engine.get_frames_per_second(),chunks.size(),int(colony.elapsed)]
+	if selected_index >= 0 and selected_index < colony.colonists.size():
+		var c = colony.colonists[selected_index]
+		info.text += "\n%s | %s | HP %d | Hunger %d | Thirst %d | Stamina %d | Mood %d" % [c.display_name,c.activity,int(c.health),int(c.hunger),int(c.thirst),int(c.stamina),int(c.happiness)]
 
 func select_action(action: String) -> void:
 	if action == "Save":
@@ -133,7 +182,13 @@ func refresh_chunks() -> void:
 	pending.sort_custom(func(a: Vector2i,b: Vector2i) -> bool: return a.distance_squared_to(center_chunk) < b.distance_squared_to(center_chunk))
 
 func _process(_delta: float) -> void:
-	colony.advance(_delta)
+	if simulation_speed > 0.0: colony.advance(_delta*simulation_speed)
+	update_info()
+	if not "--world-smoke" in OS.get_cmdline_user_args():
+		autosave_elapsed += _delta
+		if autosave_elapsed >= 60.0:
+			autosave_elapsed = 0.0
+			if not Save.save(world,SAVE_PATH): status.text = "Autosave failed"
 	for colonist in colony.colonists:
 		if colonist_views.has(colonist.id):
 			var view = colonist_views[colonist.id]
