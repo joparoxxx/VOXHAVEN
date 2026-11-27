@@ -84,6 +84,13 @@ jobs:
           set -o pipefail
           timeout 180 xvfb-run -a godot --display-driver x11 --rendering-method gl_compatibility --audio-driver Dummy --path . --script res://tests/terrain_atlas_test.gd 2>&1 | tee atlas.log
           if grep -E 'SCRIPT ERROR:|ERROR:' atlas.log; then exit 1; fi
+      - name: Colony simulation and AI tests
+        run: |
+          set -o pipefail
+          for test in colony_simulation_test colony_ai_test; do
+            timeout 180 godot --headless --path . --script "res://tests/$test.gd" 2>&1 | tee "$test.log"
+            if grep -E 'SCRIPT ERROR:|ERROR:' "$test.log"; then exit 1; fi
+          done
       - name: World rendering smoke test
         run: |
           set -o pipefail
