@@ -27,6 +27,8 @@ var focus := Vector3(8,28,8)
 var camera: Camera3D
 var material := StandardMaterial3D.new()
 var yaw := 0.7
+const MIN_ZOOM := 12.0
+const MAX_ZOOM := 48.0
 var zoom := 32.0
 var center_chunk := Vector2i(999999,999999)
 
@@ -70,6 +72,12 @@ func _ready() -> void:
 		button.custom_minimum_size = Vector2(90,48)
 		bar.add_child(button)
 		button.pressed.connect(select_action.bind(title))
+	for direction in [-1,1]:
+		var zoom_button := Button.new()
+		zoom_button.text = "+" if direction < 0 else "-"
+		zoom_button.custom_minimum_size = Vector2(56,48)
+		bar.add_child(zoom_button)
+		zoom_button.pressed.connect(step_zoom.bind(direction))
 	status = Label.new()
 	status.text = "Mine: right click or tap terrain"
 	bar.add_child(status)
@@ -91,6 +99,14 @@ func pick_block(screen: Vector2) -> void:
 	var p := Vector3i(point.floor())
 	if edit_block(p,World.Block.DIRT if place_mode else World.Block.AIR):
 		status.text = "Block placed" if place_mode else "Block mined"
+
+func step_zoom(direction: int) -> void:
+	set_zoom(zoom * pow(1.2,direction))
+
+func set_zoom(value: float) -> void:
+	zoom = clampf(value,MIN_ZOOM,MAX_ZOOM)
+	update_camera()
+	refresh_chunks()
 
 func update_camera() -> void:
 	camera.size = zoom
@@ -167,29 +183,55 @@ func edit_block(p: Vector3i, block: int) -> bool:
 		if chunks.has(affected) and not pending.has(affected): pending.append(affected)
 	return true
 
+var touch_points: Dictionary = {}
 var touch_start := Vector2.ZERO
 var touch_dragged := false
+var multi_touch := false
+
+func pan_camera(movement: Vector2) -> void:
+	var height := maxf(1.0,get_viewport().get_visible_rect().size.y)
+	focus += Vector3(-movement.x,0,-movement.y).rotated(Vector3.UP,yaw)*zoom/height
+	update_camera()
+	refresh_chunks()
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		if event.pressed:
-			touch_start = event.position
-			touch_dragged = false
-		elif not touch_dragged:
-			pick_block(event.position)
-	if event is InputEventScreenDrag and event.position.distance_to(touch_start)>12:
-		touch_dragged = true
-	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
-		pick_block(event.position)
-	if event is InputEventScreenDrag or (event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)):
-		var movement: Vector2 = event.relative
-		focus += Vector3(-movement.x,0,-movement.y).rotated(Vector3.UP,yaw)*zoom/720.0
-	elif event is InputEventMagnifyGesture:
-		zoom = clampf(zoom/maxf(event.factor,0.01),12,64)
+			if touch_points.is_empty():
+				touch_start = event.position
+				touch_dragged = false
+				multi_touch = false
+			touch_points[event.index] = event.position
+			if touch_points.size() > 1: multi_touch = true
+		elif touch_points.has(event.index):
+			touch_points.erase(event.index)
+			if touch_points.is_empty() and not multi_touch and not touch_dragged and not event.canceled:
+				pick_block(event.position)
+		return
+	if event is InputEventScreenDrag:
+		if not touch_points.has(event.index): return
+		if touch_points.size() == 2:
+			var other := Vector2.ZERO
+			for index in touch_points:
+				if index != event.index: other = touch_points[index]
+			var previous: Vector2 = touch_points[event.index]
+			var old_distance := previous.distance_to(other)
+			var new_distance := event.position.distance_to(other)
+			if old_distance > 8.0 and new_distance > 8.0:
+				set_zoom(zoom * old_distance / new_distance)
+		elif touch_points.size() == 1 and not multi_touch:
+			if event.position.distance_to(touch_start) > 12: touch_dragged = true
+			if touch_dragged: pan_camera(event.relative)
+		touch_points[event.index] = event.position
+		return
+	if event is InputEventMagnifyGesture:
+		if touch_points.is_empty(): set_zoom(zoom/maxf(event.factor,0.01))
 	elif event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP: zoom = maxf(12,zoom-2)
-		if event.button_index == MOUSE_BUTTON_WHEEL_DOWN: zoom = minf(64,zoom+2)
-	update_camera()
-	refresh_chunks()
+		if event.button_index == MOUSE_BUTTON_RIGHT: pick_block(event.position)
+		elif event.button_index == MOUSE_BUTTON_WHEEL_UP: step_zoom(-1)
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN: step_zoom(1)
+	elif event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and touch_points.is_empty():
+		pan_camera(event.relative)
 
 func spawn_colony(spawn: Vector3i) -> void:
 	colony.initialize(spawn+Vector3i.UP)
