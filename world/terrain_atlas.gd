@@ -20,7 +20,15 @@ static func build_lookup() -> Dictionary:
 				var normals: PackedVector3Array = a[Mesh.ARRAY_NORMAL]
 				var uv: PackedVector2Array = a[Mesh.ARRAY_TEX_UV]
 				if uv.size()!=verts.size() or normals.size()!=verts.size(): continue
+				var indices: PackedInt32Array = a[Mesh.ARRAY_INDEX]
 				for direction in DIRS:
+					# Grass is a detailed mesh, not a single UV-mapped cube face.
+					# Sample within one dominant face triangle, never across atlas islands.
+					if block == 1:
+						var sample := dominant_face_uv(verts,normals,uv,indices,direction)
+						if sample.x >= 0.0:
+							lookup[Vector2i(block,DIRS.find(direction))] = PackedVector2Array([sample,sample,sample,sample])
+							continue
 					var u := Vector3.UP if direction.y==0 else Vector3.RIGHT
 					var v: Vector3 = direction.cross(u)
 					var corners := PackedVector2Array()
@@ -37,3 +45,18 @@ static func build_lookup() -> Dictionary:
 					if corners.size()==4: lookup[Vector2i(block,DIRS.find(direction))]=corners
 		root.free()
 	return lookup
+
+static func dominant_face_uv(verts: PackedVector3Array, normals: PackedVector3Array, uv: PackedVector2Array, indices: PackedInt32Array, direction: Vector3) -> Vector2:
+	var best_area := 0.0
+	var sample := Vector2(-1,-1)
+	var count := indices.size() if not indices.is_empty() else verts.size()
+	for i in range(0,count-2,3):
+		var a := indices[i] if not indices.is_empty() else i
+		var b := indices[i+1] if not indices.is_empty() else i+1
+		var c := indices[i+2] if not indices.is_empty() else i+2
+		if minf(normals[a].dot(direction),minf(normals[b].dot(direction),normals[c].dot(direction))) < 0.9: continue
+		var area := (verts[b]-verts[a]).cross(verts[c]-verts[a]).length()
+		if area > best_area:
+			best_area = area
+			sample = (uv[a]+uv[b]+uv[c])/3.0
+	return sample
