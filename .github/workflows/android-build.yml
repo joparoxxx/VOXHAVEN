@@ -1,6 +1,9 @@
 name: Android prototype APK
 on:
   workflow_dispatch:
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
@@ -11,6 +14,14 @@ jobs:
       GODOT_VERSION: 4.5.1
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/voxhaven/godot
+          key: godot-linux-x64-4.5.1
+      - uses: actions/cache@v4
+        with:
+          path: .godot/imported
+          key: godot-import-4.5.1-${{ runner.os }}-${{ hashFiles('assets/**', '**/*.import', 'project.godot') }}
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -20,18 +31,31 @@ jobs:
           set -euo pipefail
           sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
           if [ ! -x "$sdkmanager" ]; then sdkmanager="$(command -v sdkmanager)"; fi
-          "$sdkmanager" 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0'
+          if [ ! -x "$ANDROID_HOME/platform-tools/adb" ] || [ ! -f "$ANDROID_HOME/platforms/android-35/android.jar" ] || [ ! -x "$ANDROID_HOME/build-tools/35.0.0/apksigner" ]; then
+            "$sdkmanager" 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0'
+          fi
+      - uses: actions/cache@v4
+        with:
+          path: ~/.local/share/godot/export_templates/4.5.1.stable
+          key: godot-templates-4.5.1
       - name: Install Godot and templates
         run: |
           set -euo pipefail
           base="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable"
-          curl -fL --retry 3 "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip" -o /tmp/godot.zip
-          unzip -q /tmp/godot.zip -d /tmp/godot
-          sudo install /tmp/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64 /usr/local/bin/godot
-          curl -fL --retry 3 "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz" -o /tmp/templates.tpz
-          unzip -q /tmp/templates.tpz -d /tmp/godot-templates
-          mkdir -p "$HOME/.local/share/godot/export_templates"
-          mv /tmp/godot-templates/templates "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p "$HOME/.cache/voxhaven/godot"
+          binary="$HOME/.cache/voxhaven/godot/godot"
+          if [ ! -x "$binary" ]; then
+            curl -fL --retry 3 "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip" -o /tmp/godot.zip
+            unzip -q /tmp/godot.zip -d /tmp/godot
+            install /tmp/godot/Godot* "$binary"
+          fi
+          sudo install "$binary" /usr/local/bin/godot
+          if [ ! -f "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable/android_debug.apk" ]; then
+            curl -fL --retry 3 "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz" -o /tmp/templates.tpz
+            unzip -q /tmp/templates.tpz -d /tmp/godot-templates
+            mkdir -p "$HOME/.local/share/godot/export_templates"
+            mv /tmp/godot-templates/templates "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          fi
       - name: Configure debug signing
         run: |
           mkdir -p "$HOME/.android" "$HOME/.config/godot"
@@ -66,8 +90,11 @@ jobs:
           name: voxhaven-android-debug
           path: build/voxhaven-debug.apk
           if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: android-build-logs
           path: '*.log'
+          retention-days: 3
