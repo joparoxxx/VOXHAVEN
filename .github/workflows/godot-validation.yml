@@ -1,6 +1,8 @@
 name: Godot validation
 on:
   workflow_dispatch:
+  push:
+    branches: [game/asset-integration]
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
