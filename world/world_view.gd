@@ -120,7 +120,9 @@ func _process(_delta: float) -> void:
 	colony.advance(_delta)
 	for colonist in colony.colonists:
 		if colonist_views.has(colonist.id):
-			colonist_views[colonist.id].visible = chunks.has(world.chunk_of(colonist.position)) and colonist.health > 0.0
+			var view = colonist_views[colonist.id]
+			view.visible = chunks.has(world.chunk_of(colonist.position)) and colonist.health > 0.0
+			view.sync_state(colonist,_delta)
 	if worker.is_started() and not worker.is_alive():
 		var arrays: Array = worker.wait_to_finish()
 		if active_revision == revision and in_window(active_key):
@@ -191,6 +193,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func spawn_colony(spawn: Vector3i) -> void:
 	colony.initialize(spawn+Vector3i.UP)
+	colony.terrain = world
 	var candidates: Array[Vector3i] = []
 	for radius in range(0,9):
 		for z in range(-radius,radius+1):

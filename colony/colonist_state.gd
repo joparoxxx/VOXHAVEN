@@ -8,11 +8,25 @@ var stamina := 100.0
 var health := 100.0
 var happiness := 70.0
 var position := Vector3i.ZERO
+var curiosity := 1.0
+var memory: Array[Vector3i] = []
+var route: Array[Vector3i] = []
+var actions: Array[String] = []
+var activity := "Idle"
+var next_decision := 0.0
+
+func remember(p: Vector3i) -> void:
+	memory.erase(p)
+	memory.append(p)
+	if memory.size()>16: memory.pop_front()
+
 
 func _init(identifier: int, label: String, spawn: Vector3i) -> void:
 	id = identifier
 	display_name = label
 	position = spawn
+	curiosity = 0.8+float(identifier%3)*0.2
+	next_decision = float(identifier%3)
 
 func tick(seconds: float) -> void:
 	if health <= 0.0 or seconds <= 0.0: return
