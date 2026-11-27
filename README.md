@@ -76,3 +76,7 @@ See the [foundation notes](https://github.com/joparoxxx/VOXHAVEN/blob/game/colon
 - Historical branches — preserved for reference; legacy game code is not reused.
 
 Read the [Game Master Plan](docs/GAME_MASTER_PLAN.md) before contributing. Its latest approved humanoid direction and clean-slate decision supersede historical robot-specific sections.
+
+## Development agent entry point
+
+All development agents must start with [AGENTS.md](AGENTS.md), follow the [mandatory autonomous development skill](.agents/skills/voxhaven-development/SKILL.md), and read the [persistent checkpoint](docs/AGENT_STATE.md) and [master plan](docs/GAME_MASTER_PLAN.md). Inspect the active development branch before work; resume from verified repository state, not chat history.
