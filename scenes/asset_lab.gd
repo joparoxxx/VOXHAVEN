@@ -3,11 +3,30 @@ const SAMPLES = [
 	"assets/library/KayKit_BlockBits_1.0_FREE/Assets/gltf/grass.gltf",
 	"assets/library/KayKit_Adventurers_2.0_FREE/KayKit_Adventurers_2.0_FREE/Characters/gltf/Knight.glb",
 	"assets/library/KayKit_RPGToolsBits_1.0_FREE/Assets/gltf/pickaxe.gltf",
-	"assets/library/kenney_fantasy-town-kit_2.0/Models/GLB format/cart.glb"
+	"assets/library/kenney_fantasy-town-kit_2.0/Models/GLB format/cart.glb",
+	"assets/library/Quaternius_Cube_World/Environment/Tree_1.gltf",
+	"assets/library/Quaternius_Cube_World/Environment/Tree_2.gltf",
+	"assets/library/Quaternius_Cube_World/Environment/Tree_3.gltf",
+	"assets/library/Quaternius_Cube_World/Tools/Axe_Diamond.gltf",
+	"assets/library/Quaternius_Cube_World/Tools/Axe_Gold.gltf",
+	"assets/library/Quaternius_Cube_World/Tools/Axe_Stone.gltf",
+	"assets/library/Quaternius_Cube_World/Tools/Shovel_Diamond.gltf",
+	"assets/library/Quaternius_Cube_World/Tools/Shovel_Gold.gltf",
+	"assets/library/Quaternius_Cube_World/Tools/Shovel_Stone.gltf",
+	"assets/library/Quaternius_Cube_World/Tools/Shovel_Wood.gltf",
+	"assets/library/KayKit_ResourceBits_1.0_FREE/Assets/gltf/Copper_Bar.gltf",
+	"assets/library/KayKit_ResourceBits_1.0_FREE/Assets/gltf/Copper_Bars.gltf",
+	"assets/library/KayKit_ResourceBits_1.0_FREE/Assets/gltf/Copper_Bars_Stack_Large.gltf",
+	"assets/library/KayKit_Furniture_Bits_1.0_FREE/KayKit_Furniture_Bits_1.0_FREE/Assets/gltf/armchair.gltf",
+	"assets/library/KayKit_Furniture_Bits_1.0_FREE/KayKit_Furniture_Bits_1.0_FREE/Assets/gltf/armchair_pillows.gltf",
+	"assets/library/KayKit_Furniture_Bits_1.0_FREE/KayKit_Furniture_Bits_1.0_FREE/Assets/gltf/bed_double_A.gltf",
+	"assets/library/kenney_fantasy-town-kit_2.0/Models/GLB format/balcony-wall-fence.glb",
+	"assets/library/kenney_fantasy-town-kit_2.0/Models/GLB format/balcony-wall.glb",
+	"assets/library/kenney_fantasy-town-kit_2.0/Models/GLB format/banner-green.glb"
 ]
 var camera: Camera3D
 var yaw := 0.7
-var distance := 12.0
+var distance := 24.0
 var failures := 0
 
 func _ready() -> void:
@@ -22,7 +41,7 @@ func _ready() -> void:
 	add_child(environment)
 	var floor_mesh := MeshInstance3D.new()
 	var plane := PlaneMesh.new()
-	plane.size = Vector2(16, 12)
+	plane.size = Vector2(24, 24)
 	floor_mesh.mesh = plane
 	add_child(floor_mesh)
 	camera = Camera3D.new()
@@ -37,7 +56,7 @@ func _ready() -> void:
 			push_error("Missing sample: " + SAMPLES[i])
 			continue
 		add_child(model)
-		model.position = Vector3((i - 1.5) * 3.0, 0.05, 0)
+		model.position = Vector3((i % 5 - 2) * 4.0, 0.05, (floori(float(i) / 5.0) - 2) * 4.0)
 		var players := model.find_children("*", "AnimationPlayer", true, false)
 		for player in players:
 			for clip in player.get_animation_list():
