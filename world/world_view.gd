@@ -4,6 +4,10 @@ const Mesher = preload("res://world/chunk_mesh.gd")
 const Save = preload("res://world/world_save.gd")
 const Decor = preload("res://world/terrain_decor.gd")
 const Atlas = preload("res://world/terrain_atlas.gd")
+const Colony = preload("res://colony/colony_simulation.gd")
+const ColonistView = preload("res://colony/colonist_view.gd")
+var colony := Colony.new()
+var colonist_views: Dictionary = {}
 var atlas: Dictionary = {}
 const SAVE_PATH := "user://world.json"
 const MIN_RADIUS := 2
@@ -54,6 +58,7 @@ func _ready() -> void:
 	camera.make_current()
 	update_camera()
 	refresh_chunks()
+	spawn_colony(spawn)
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	var bar := HBoxContainer.new()
@@ -112,6 +117,10 @@ func refresh_chunks() -> void:
 	pending.sort_custom(func(a: Vector2i,b: Vector2i) -> bool: return a.distance_squared_to(center_chunk) < b.distance_squared_to(center_chunk))
 
 func _process(_delta: float) -> void:
+	colony.advance(_delta)
+	for colonist in colony.colonists:
+		if colonist_views.has(colonist.id):
+			colonist_views[colonist.id].visible = chunks.has(world.chunk_of(colonist.position)) and colonist.health > 0.0
 	if worker.is_started() and not worker.is_alive():
 		var arrays: Array = worker.wait_to_finish()
 		if active_revision == revision and in_window(active_key):
@@ -179,3 +188,27 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event.button_index == MOUSE_BUTTON_WHEEL_DOWN: zoom = minf(64,zoom+2)
 	update_camera()
 	refresh_chunks()
+
+func spawn_colony(spawn: Vector3i) -> void:
+	colony.initialize(spawn+Vector3i.UP)
+	var candidates: Array[Vector3i] = []
+	for radius in range(0,9):
+		for z in range(-radius,radius+1):
+			for x in range(-radius,radius+1):
+				if maxi(absi(x),absi(z)) != radius: continue
+				for y in range(World.HEIGHT-2,0,-1):
+					var p := Vector3i(spawn.x+x,y,spawn.z+z)
+					if world.block_at(p-Vector3i.UP) != World.Block.AIR and world.block_at(p) == World.Block.AIR and world.block_at(p+Vector3i.UP) == World.Block.AIR:
+						candidates.append(p)
+						break
+				if candidates.size() >= 3: break
+			if candidates.size() >= 3: break
+		if candidates.size() >= 3: break
+	for i in mini(candidates.size(),colony.colonists.size()):
+		var colonist = colony.colonists[i]
+		colonist.position = candidates[i]
+		var view := ColonistView.new()
+		add_child(view)
+		view.setup(colonist)
+		view.visible = false
+		colonist_views[colonist.id] = view
