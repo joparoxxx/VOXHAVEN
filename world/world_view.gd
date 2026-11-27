@@ -6,7 +6,10 @@ const Decor = preload("res://world/terrain_decor.gd")
 const Atlas = preload("res://world/terrain_atlas.gd")
 var atlas: Dictionary = {}
 const SAVE_PATH := "user://world.json"
-const RADIUS := 1
+const MIN_RADIUS := 2
+const MAX_RADIUS := 4
+const UNLOAD_BUFFER := 1
+var render_radius := MIN_RADIUS
 var worker := Thread.new()
 var active_key := Vector2i.ZERO
 var revision := 0
@@ -91,17 +94,22 @@ func update_camera() -> void:
 
 func refresh_chunks() -> void:
 	var next := world.chunk_of(Vector3i(focus.floor()))
-	if next == center_chunk: return
+	var viewport_size := get_viewport().get_visible_rect().size
+	var desired := clampi(ceili(zoom * maxf(1.0,viewport_size.x/maxf(1.0,viewport_size.y)) / 32.0)+1,MIN_RADIUS,MAX_RADIUS)
+	if "--world-smoke" in OS.get_cmdline_user_args(): desired = MIN_RADIUS
+	if next == center_chunk and desired == render_radius: return
 	center_chunk = next
+	render_radius = desired
 	pending.clear()
 	for key in chunks.keys():
-		if absi(key.x-next.x)>RADIUS or absi(key.y-next.y)>RADIUS:
+		if absi(key.x-next.x)>render_radius+UNLOAD_BUFFER or absi(key.y-next.y)>render_radius+UNLOAD_BUFFER:
 			chunks[key].queue_free()
 			chunks.erase(key)
-	for z in range(-RADIUS,RADIUS+1):
-		for x in range(-RADIUS,RADIUS+1):
+	for z in range(-render_radius,render_radius+1):
+		for x in range(-render_radius,render_radius+1):
 			var key := next+Vector2i(x,z)
-			if not chunks.has(key): pending.append(key)
+			if not chunks.has(key) and not (worker.is_started() and key == active_key and active_revision == revision): pending.append(key)
+	pending.sort_custom(func(a: Vector2i,b: Vector2i) -> bool: return a.distance_squared_to(center_chunk) < b.distance_squared_to(center_chunk))
 
 func _process(_delta: float) -> void:
 	if worker.is_started() and not worker.is_alive():
@@ -118,10 +126,10 @@ func _process(_delta: float) -> void:
 		if worker.start(Mesher.generate.bind(snapshot,active_key,atlas)) != OK:
 			build_chunk(active_key,Mesher.upload(Mesher.generate(snapshot,active_key,atlas)))
 	if "--world-smoke" in OS.get_cmdline_user_args() and pending.is_empty() and not worker.is_started():
-		get_tree().quit(0 if chunks.size() == 9 else 1)
+		get_tree().quit(0 if chunks.size() == (MIN_RADIUS*2+1)*(MIN_RADIUS*2+1) else 1)
 
 func in_window(key: Vector2i) -> bool:
-	return absi(key.x-center_chunk.x)<=RADIUS and absi(key.y-center_chunk.y)<=RADIUS
+	return absi(key.x-center_chunk.x)<=render_radius and absi(key.y-center_chunk.y)<=render_radius
 
 func _exit_tree() -> void:
 	if worker.is_started(): worker.wait_to_finish()
