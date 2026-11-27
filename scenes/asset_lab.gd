@@ -57,7 +57,33 @@ func _ready() -> void:
 			continue
 		add_child(model)
 		model.position = Vector3((i % 5 - 2) * 4.0, 0.05, (floori(float(i) / 5.0) - 2) * 4.0)
+		var meshes := model.find_children("*", "MeshInstance3D", true, false)
+		var valid_meshes := 0
+		for child in meshes:
+			var mesh_node := child as MeshInstance3D
+			if mesh_node.mesh == null:
+				continue
+			var bounds := mesh_node.get_aabb()
+			if not bounds.position.is_finite() or not bounds.size.is_finite() or bounds.size.length() <= 0.0001:
+				continue
+			valid_meshes += 1
+			print("Mesh bounds: ", SAMPLES[i], " ", bounds, " pivot: ", mesh_node.position)
+			for surface in mesh_node.mesh.get_surface_count():
+				print("Surface material: ", mesh_node.get_active_material(surface))
+		if valid_meshes == 0:
+			failures += 1
+			push_error("No valid mesh geometry: " + SAMPLES[i])
 		var players := model.find_children("*", "AnimationPlayer", true, false)
+		if SAMPLES[i].ends_with("/Knight.glb"):
+			var skeletons := model.find_children("*", "Skeleton3D", true, false)
+			var has_rig := false
+			for child in skeletons:
+				var skeleton := child as Skeleton3D
+				if skeleton.get_bone_count() > 0:
+					has_rig = true
+			if not has_rig:
+				failures += 1
+				push_error("Knight has no populated skeleton")
 		for player in players:
 			for clip in player.get_animation_list():
 				print("Animation: ", clip)
