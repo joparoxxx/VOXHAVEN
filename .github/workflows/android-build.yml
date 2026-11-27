@@ -1,0 +1,73 @@
+name: Android prototype APK
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      GODOT_VERSION: 4.5.1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install SDK packages using runner SDK
+        run: |
+          set -euo pipefail
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$sdkmanager" ]; then sdkmanager="$(command -v sdkmanager)"; fi
+          "$sdkmanager" 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Install Godot and templates
+        run: |
+          set -euo pipefail
+          base="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}-stable"
+          curl -fL --retry 3 "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip" -o /tmp/godot.zip
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          sudo install /tmp/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64 /usr/local/bin/godot
+          curl -fL --retry 3 "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz" -o /tmp/templates.tpz
+          unzip -q /tmp/templates.tpz -d /tmp/godot-templates
+          mkdir -p "$HOME/.local/share/godot/export_templates"
+          mv /tmp/godot-templates/templates "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+      - name: Configure debug signing
+        run: |
+          mkdir -p "$HOME/.android" "$HOME/.config/godot"
+          keytool -genkeypair -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
+          cat > "$HOME/.config/godot/editor_settings-4.5.tres" <<EOF
+          [gd_resource type="EditorSettings" format=3]
+          [resource]
+          export/android/java_sdk_path = "$JAVA_HOME"
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          export/android/debug_keystore = "$HOME/.android/debug.keystore"
+          export/android/debug_keystore_user = "androiddebugkey"
+          export/android/debug_keystore_pass = "android"
+          EOF
+      - name: Import project
+        run: |
+          set -o pipefail
+          godot --headless --editor --path . --import 2>&1 | tee import.log
+          if grep -E 'SCRIPT ERROR:|ERROR:' import.log; then exit 1; fi
+      - name: Export debug APK
+        run: |
+          set -o pipefail
+          mkdir -p build
+          godot --headless --path . --export-debug Android build/voxhaven-debug.apk 2>&1 | tee export.log
+          test -s build/voxhaven-debug.apk
+          if grep -E 'SCRIPT ERROR:|ERROR:' export.log; then exit 1; fi
+      - name: Verify APK
+        run: |
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose build/voxhaven-debug.apk
+          unzip -l build/voxhaven-debug.apk | grep 'lib/arm64-v8a/libgodot_android.so'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: voxhaven-android-debug
+          path: build/voxhaven-debug.apk
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-build-logs
+          path: '*.log'
