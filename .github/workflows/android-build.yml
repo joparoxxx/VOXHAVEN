@@ -18,9 +18,12 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
-      - name: Install SDK packages
-        run: sdkmanager 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Install SDK packages using runner SDK
+        run: |
+          set -euo pipefail
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$sdkmanager" ]; then sdkmanager="$(command -v sdkmanager)"; fi
+          "$sdkmanager" 'platform-tools' 'platforms;android-35' 'build-tools;35.0.0'
       - name: Install Godot and templates
         run: |
           set -euo pipefail
