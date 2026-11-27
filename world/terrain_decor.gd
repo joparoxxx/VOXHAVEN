@@ -1,6 +1,6 @@
 extends RefCounted
 const World = preload("res://world/voxel_world.gd")
-const TREE = preload("res://assets/library/KayKit_BlockBits_1.0_FREE/Assets/gltf/tree.gltf")
+const TREES = [preload("res://assets/library/Quaternius_Cube_World/Environment/Tree_1.gltf"), preload("res://assets/library/Quaternius_Cube_World/Environment/Tree_2.gltf"), preload("res://assets/library/Quaternius_Cube_World/Environment/Tree_3.gltf")]
 
 static func tree_positions(world: World, key: Vector2i) -> Array[Vector3i]:
 	var result: Array[Vector3i] = []
@@ -19,7 +19,7 @@ static func tree_positions(world: World, key: Vector2i) -> Array[Vector3i]:
 
 static func populate(world: World, key: Vector2i, parent: Node3D) -> void:
 	for p in tree_positions(world,key):
-		var tree := TREE.instantiate() as Node3D
+		var tree := TREES[posmod(hash(p), TREES.size())].instantiate() as Node3D
 		if tree == null: continue
 		parent.add_child(tree)
 		tree.position = Vector3(p)-parent.position+Vector3(0.5,0,0.5)
