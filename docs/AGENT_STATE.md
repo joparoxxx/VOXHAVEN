@@ -25,3 +25,9 @@ Next exact task: inspect current development HEAD, terrain registry, atlas mappi
 - Commit deb20fa7e8fd818a9844eb6ed21dbd8f10f2ee7f on game/asset-integration: Mine taps now create or cancel highlighted block designations instead of instantly deleting terrain; placement clears a designation at the edited position; UI reports queued designation count.
 - Static code inspection only. Godot parse, scene smoke, automated tests, Android build and physical device tests: NOT RUN. Mining designations are currently session-only and are not yet consumed by colony AI. Phase 4.1 is partial, not complete.
 - Next: persist mining designations, implement bounded colonist job reservation and path-to-work execution, then resource drops/hauling. Validate Godot parsing and runtime before declaring functionality verified.
+
+## 2026-11-28 Cube World asset audit
+- Verified Quaternius_Cube_World/Environment/Tree_1.gltf, Tree_2.gltf, Tree_3.gltf exist on game/asset-integration. Registered all three in assets/ASSET_CATALOG.txt at commit 54be5d7d8101655122f5d0e088b66d5274ef6314.
+- Current colony/colonist_view.gd still uses KayKit Adventurers. Historical commit 585be97 references Quaternius_Cube_World/Characters/Character_Male_1.gltf, but that exact file returned NOT_FOUND on current branch. Do not restore its preload until asset path is verified.
+- world/terrain_atlas.gd and world/world_view.gd still use KayKit BlockBits textures and models. Replacement terrain atlas/UV mapping requires verifying actual Cube World texture files and mapping before switching.
+- Static repository inspection only; Godot imports, runtime rendering, Android builds: NOT RUN. Asset replacement remains incomplete.
