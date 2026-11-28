@@ -46,7 +46,7 @@ func _ready() -> void:
 	focus = Vector3(spawn)+Vector3(0.5,1.0,0.5)
 	home_focus = focus
 	atlas = Atlas.build_lookup()
-	material.albedo_texture = load(Atlas.ROOT+"block_bits_texture.png")
+	material.albedo_texture = load(Atlas.TEXTURE_PATH) as Texture2D
 	material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
 	material.vertex_color_use_as_albedo = true
 	material.roughness = 1.0

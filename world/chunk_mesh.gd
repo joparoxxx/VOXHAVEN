@@ -2,6 +2,8 @@ extends RefCounted
 const World = preload("res://world/voxel_world.gd")
 const DIRS = [Vector3i(1,0,0),Vector3i(-1,0,0),Vector3i(0,1,0),Vector3i(0,-1,0),Vector3i(0,0,1),Vector3i(0,0,-1)]
 const COLORS = [Color.TRANSPARENT,Color("638b42"),Color("79563b"),Color("85858a"),Color("d6bf83"),Color("e4eef4"),Color("45434b"),Color("b77950"),Color("a9b8c2"),Color("d8ad42")]
+# Tint reused Cube World pixels for biomes/ore materials without adding new textures.
+const TINTS = [Color.WHITE,Color.WHITE,Color.WHITE,Color.WHITE,Color("d6bf83"),Color.WHITE,Color("6b6872"),Color("d9a07b"),Color("cad5df"),Color("f6d36e")]
 
 static func build(world: World, chunk: Vector2i) -> ArrayMesh:
 	return upload(generate(world,chunk))
@@ -43,7 +45,7 @@ static func generate(world: World, chunk: Vector2i, atlas: Dictionary = {}) -> A
 					for i in 4:
 						vertices.append(points[i])
 						normals.append(n)
-						colors.append(Color.WHITE if corners.size()==4 else COLORS[block])
+						colors.append(TINTS[block] if corners.size()==4 else COLORS[block])
 						uvs.append(corners[i] if corners.size()==4 else Vector2.ZERO)
 					for index in [0,2,1,0,3,2]:
 						indices.append(base+index)
