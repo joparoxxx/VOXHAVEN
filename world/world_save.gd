@@ -77,9 +77,9 @@ static func restore_woodcut(path: String) -> Dictionary:
 
 ## Optional staged excavation plans (version 1 format, older worlds load as usual).
 static func restore_dig(path: String) -> Dictionary:
- if not FileAccess.file_exists(path):
-  return {}
- var data = JSON.parse_string(FileAccess.get_file_as_string(path))
- if data is Dictionary and data.get("version") == VERSION and data.get("dig",{}) is Dictionary:
-  return data.get("dig",{})
- return {}
+	if not FileAccess.file_exists(path):
+		return {}
+	var data = JSON.parse_string(FileAccess.get_file_as_string(path))
+	if data is Dictionary and data.get("version") == VERSION and data.get("dig", {}) is Dictionary:
+		return data.get("dig", {})
+	return {}
