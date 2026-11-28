@@ -51,6 +51,12 @@ func _initialize() -> void:
 	var bottom := CameraRig.orbit_angles(0.0,1.0,Vector2(0,-10000))
 	ok = _check(top.y <= CameraRig.MAX_PITCH and bottom.y >= CameraRig.MIN_PITCH, "vertical pitch clamps", failures) and ok
 	ok = _check(absf(CameraRig.orbit_angles(0.0,0.8,Vector2(100,0)).x) > 0.1, "horizontal yaw drag", failures) and ok
+	var same_zoom := CameraRig.pinch_zoom(32.0,200.0,200.0,12.0,48.0)
+	var closer_zoom := CameraRig.pinch_zoom(32.0,200.0,400.0,12.0,48.0)
+	var farther_zoom := CameraRig.pinch_zoom(32.0,200.0,100.0,12.0,48.0)
+	ok = _check(is_equal_approx(same_zoom,32.0), "no pinch drift with unchanged distance", failures) and ok
+	ok = _check(is_equal_approx(closer_zoom,16.0), "pinch-out zooms in", failures) and ok
+	ok = _check(is_equal_approx(farther_zoom,48.0), "pinch-in clamps to original max zoom", failures) and ok
 	var pan := CameraRig.pan_delta(Vector2(40,20),0.0,30.0,300.0)
 	ok = _check(pan.x < 0.0 and pan.z < 0.0, "camera free pan direction", failures) and ok
 	print("Gravity, falling animation and free-orbit camera: ", "PASS" if ok else "FAIL")

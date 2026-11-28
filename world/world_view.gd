@@ -717,7 +717,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			# Absolute pinch reference prevents drift when two fingers translate.
 			# Small temporary distance jitter does not start a chunk reload.
 			if pinch_reference_distance > 12.0 and new_distance > 12.0:
-				var target_zoom := pinch_reference_zoom*pinch_reference_distance/new_distance
+				var target_zoom := CameraRig.pinch_zoom(pinch_reference_zoom,pinch_reference_distance,new_distance,MIN_ZOOM,MAX_ZOOM)
 				if absf(target_zoom-zoom) >= 0.08:
 					set_zoom(target_zoom)
 			# Two-finger translation always pans, regardless of orbit mode.

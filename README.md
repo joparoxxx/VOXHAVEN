@@ -103,7 +103,7 @@ These are commands to **run**, not claims that the latest commit has passed them
 - **Chop:** tap the ground directly beneath a Cube World tree to mark/unmark a woodcutting job. Colonists navigate, chop, produce wood, and autonomously haul it.
 - **Stockpile:** tap walkable ground to place or relocate the visible storage area (the existing stock moves with it in this prototype). Colonists carry drops here; the crate label shows total stock and wood count.
 - **Save:** write terrain edits, mining/woodcut tasks, harvested trees, stockpile location and stored/unhauled items to local user storage.
-- **Camera:** drag to pan, pinch or use +/− to zoom; buttons provide rotation and focus.
+- **Camera:** Camera ON enables drag-to-orbit and tap-to-set pivot; Camera OFF enables normal work selection and free pan; pinch/zoom remains available. Fixed rotate/follow buttons were removed.
 - **Colonists:** cycle the selected colonist and inspect basic needs/status; use the simulation-speed button to pause or accelerate time.
 
 The UI and multitouch input are prototypes; physical Android device testing remains outstanding.
@@ -116,11 +116,12 @@ The UI and multitouch input are prototypes; physical Android device testing rema
 - **Camera ON:** a 3D-object-viewer style camera. One-finger drag orbits (yaw/pitch), a tap sets the fixed orbit pivot, two-finger drag pans and pinch zooms. There is **no automatic follow** of a colonist.
 - **Camera OFF:** gameplay tap commands and Select gestures are active; dragging pans the camera when not selecting.
 - Desktop: right-drag orbit, left-drag pan or select, mouse wheel zoom. Reset via Tools → Reset Camera.
-- **Original 16 × 16 chunk streaming restored:** chunk dimensions are fixed at 16 × 16 horizontal blocks. The zoom-based loading/unloading window has been returned to the previous shared radius 2–4 (5×5 to 9×9 chunks); the temporary mobile-only 2-chunk cap is removed. Independent optimizations—4 Hz HUD updates and no automatic follow or idle camera reloads—remain. Actual Android FPS still needs profiling before any further streaming changes.
+- **Camera-lag regression fix:** original zoom limits 12–48 restored; pinch uses absolute two-finger distance so two-finger translation does not repeatedly zoom, and camera transforms plus chunk-window checks are coalesced to at most once per rendered frame instead of every input event. Camera ON still orbits and OFF keeps normal game tools. Idle camera follow remains removed.
+- **Original 16 × 16 chunk streaming retained:** the prior zoom-based loading/unloading radius 2–4 (5×5–9×9 chunks) is intact. No mobile-only cap, mesher or unload-policy change. Only independent FPS reductions—4 Hz HUD refresh and event-driven excavation updates—are applied. Phone FPS remains unmeasured; compare in-game FPS before/after with the same save, position, zoom and simulation speed.
 
 ## Compact tools and single Mine workflow
 
-The Android toolbar now keeps **Mine**, **Select**, **Tools**, **Worker**, **Job**, **Camera**, and **Save** together, with smaller controls for depth, zoom and simulation speed. Secondary actions (**Pan, Place, Stockpile, Inspect, Cancel**) live in the Tools menu; camera rotation, reset and focus live in the Camera menu. Independent Dig/Chop/Chop Area buttons have been removed.
+The Android toolbar now keeps **Mine**, **Select**, **Tools**, **Worker**, **Job**, a **Camera ON/OFF switch**, and **Save** together, with smaller controls for depth, zoom and simulation speed. Secondary actions (**Pan, Place, Stockpile, Inspect, Cancel**) live in the Tools menu; camera reset lives in Tools → Reset Camera. Independent Dig/Chop/Chop Area buttons have been removed.
 
 - **Mine** is the only resource work order: tap exposed terrain to excavate the block or the chosen depth (1–8). Tap the ground supporting a standing Cube World tree to designate **woodcutting instead**. Tap again to cancel that one order.
 - **Select** uses two ground taps or one-finger drag to outline up to 64 columns. Press **Mine** to automatically designate mining on suitable columns and chopping on standing trees in the area. Tree-support grass is **never queued for mining while the tree is standing**. Once cut, that block requires an explicit new mining order.

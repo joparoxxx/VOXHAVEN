@@ -13,3 +13,9 @@ static func position_for(target: Vector3,yaw: float,pitch: float,radius: float) 
 
 static func pan_delta(drag: Vector2,yaw: float,zoom: float,height: float) -> Vector3:
 	return Vector3(-drag.x,0.0,-drag.y).rotated(Vector3.UP,yaw)*zoom/maxf(height,1.0)
+
+## Absolute gesture reference prevents zoom drift from two-finger translation.
+static func pinch_zoom(reference_zoom: float, reference_distance: float, current_distance: float, minimum: float, maximum: float) -> float:
+	if reference_distance <= 12.0 or current_distance <= 12.0:
+		return clampf(reference_zoom,minimum,maximum)
+	return clampf(reference_zoom*reference_distance/current_distance,minimum,maximum)
