@@ -32,3 +32,9 @@
 - `world/terrain_atlas.gd` now samples regular Cube World `Blocks/Block_*.gltf` face colors using one source triangle UV per face (prevents gradients between palette swatches). All ten terrain block IDs remain mapped; sand/ores use tinted low-poly placeholder variants.
 - `world/terrain_decor.gd` now scales three approved tree models to 0.56× so canopies are less oversized relative to characters. Source model/texture files are untouched.
 - Atlas/decor regression tests verify style asset paths, swatch sampling and scale bounds. CI and physical Android appearance are not yet validated for this commit; compare screenshots after a new debug APK build.
+
+## 2026-11-28 owner-directed softer pixel terrain — pending CI
+- Owner prefers the original textured Cube World terrain but reports eye strain from overly sharp/high-contrast grass and dirt; regular flat-color blocks from prior commit were not the desired direction.
+- Restored `Pixel Blocks/` + `Blocks_PixelArt.png` UV extraction and texture while retaining previously scaled Quaternius trees. Added a lightweight Godot spatial shader with bilinear/mipmap sampling, mild saturation reduction (0.76) and contrast reduction (0.78), without touching source atlases/characters.
+- The shader's uniforms are adjustable without reauthoring terrain meshes. Updated atlas regression test to enforce the intended pixel-texture source rather than low-poly palette swatches.
+- Visual improvement is provisional until Godot CI and a new physical-device APK screenshot confirm readability, texture filtering and terrain/tree/character cohesion. No claim of an Android build or passing validation for this change.

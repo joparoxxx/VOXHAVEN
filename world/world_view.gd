@@ -26,7 +26,7 @@ var chunks: Dictionary = {}
 var pending: Array[Vector2i] = []
 var focus := Vector3(8,28,8)
 var camera: Camera3D
-var material := StandardMaterial3D.new()
+var material := ShaderMaterial.new()
 var yaw := 0.7
 var home_focus := Vector3.ZERO
 var simulation_speed := 1.0
@@ -47,10 +47,10 @@ func _ready() -> void:
 	focus = Vector3(spawn)+Vector3(0.5,1.0,0.5)
 	home_focus = focus
 	atlas = Atlas.build_lookup()
-	material.albedo_texture = load(Atlas.TEXTURE_PATH) as Texture2D
-	material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-	material.vertex_color_use_as_albedo = true
-	material.roughness = 1.0
+	# Keep the user's Cube World pixel texture, but soften high-frequency detail
+	# and mute strong greens/browns without changing source assets or block data.
+	material.shader = preload("res://world/terrain_soft_palette.gdshader")
+	material.set_shader_parameter("terrain_texture", load(Atlas.TEXTURE_PATH) as Texture2D)
 	var light := DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-55,-35,0)
 	add_child(light)

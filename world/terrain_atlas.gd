@@ -1,11 +1,9 @@
 extends RefCounted
-# Use the SAME Cube World low-poly palette as its characters and trees.
-# Pixel Blocks/Blocks_PixelArt.png is a separate pixel-art style and is not used in gameplay.
-const ROOT := "res://assets/library/Quaternius_Cube_World/Blocks/"
-const TEXTURE_PATH := "res://assets/library/Quaternius_Cube_World/Atlas.png"
-# Until unique low-poly sand/ore blocks are approved, tint existing palette materials.
-# Block indices align with World.Block (AIR, GRASS, DIRT, STONE, SAND, SNOW, DARK_STONE, COPPER, SILVER, GOLD).
-const MODELS := ["","Block_Grass","Block_Dirt","Block_Stone","Block_Dirt","Block_Snow","Block_Stone","Block_Stone","Block_Stone","Block_Stone"]
+# Owner-preferred Cube World Pixel Blocks terrain; softened in terrain_soft_palette.gdshader.
+const ROOT := "res://assets/library/Quaternius_Cube_World/Pixel Blocks/"
+const TEXTURE_PATH := "res://assets/library/Quaternius_Cube_World/Blocks_PixelArt.png"
+# Sand, deep stone and ores are tinted derivatives until unique tiles are approved.
+const MODELS := ["","Grass","Dirt","Stone","Snow","Snow","Stone","Coal","Diamond","Diamond"]
 const DIRS = [Vector3.RIGHT,Vector3.LEFT,Vector3.UP,Vector3.DOWN,Vector3.BACK,Vector3.FORWARD]
 
 static func build_lookup() -> Dictionary:
@@ -26,13 +24,27 @@ static func build_lookup() -> Dictionary:
 				var uv: PackedVector2Array = a[Mesh.ARRAY_TEX_UV]
 				if uv.size()!=verts.size() or normals.size()!=verts.size(): continue
 				var indices: PackedInt32Array = a[Mesh.ARRAY_INDEX]
-				# The low-poly Atlas is a tiny color palette, not a tiling image.
-				# Sample one actual source triangle per face; taking four extreme UVs
-				# across separate palette swatches would smear colors into gradients.
 				for direction in DIRS:
-					var sample := dominant_face_uv(verts,normals,uv,indices,direction)
-					if sample.x >= 0.0:
-						lookup[Vector2i(block,DIRS.find(direction))] = PackedVector2Array([sample,sample,sample,sample])
+					var u := Vector3.UP if direction.y==0 else Vector3.RIGHT
+					var v: Vector3 = direction.cross(u)
+					var corners := PackedVector2Array()
+					for target in [ -u-v,u-v,u+v,-u+v ]:
+						var best := -INF
+						var chosen := Vector2.ZERO
+						for i in verts.size():
+							if normals[i].dot(direction)<0.9: continue
+							var score: float = verts[i].dot(target)
+							if score>best:
+								best=score
+								chosen=uv[i]
+						if best != -INF: corners.append(chosen)
+					if corners.size()==4:
+						lookup[Vector2i(block,DIRS.find(direction))] = corners
+					else:
+						# Avoid stitching multiple atlas islands if a model has split UVs.
+						var sample := dominant_face_uv(verts,normals,uv,indices,direction)
+						if sample.x >= 0.0:
+							lookup[Vector2i(block,DIRS.find(direction))] = PackedVector2Array([sample,sample,sample,sample])
 		root.free()
 	return lookup
 

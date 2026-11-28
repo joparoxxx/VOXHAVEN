@@ -21,7 +21,7 @@ Voxhaven is a **work-in-progress, fully offline 3D colony simulator for Android*
 | --- | --- | --- |
 | Procedural terrain | Deterministic seed, 16 × 16 horizontal chunks, six biome classifications, caves and ore distribution | Visual seams, biome balance, collision and mobile frame times still need runtime checks |
 | World streaming | Exposed-face chunk meshes, collision, bounded chunk loading, background CPU mesh generation, terrain edits | Threading and rendering need full Godot / Android testing |
-| Cube World art | 107 GLTF models and two atlas images; four humanoid character variants; regular Cube World low-poly block palette; scaled forest trees | Latest style alignment awaits CI and on-device screenshot comparison |
+| Cube World art | 107 GLTF models and two atlas images; four humanoid character variants; softened Cube World pixel-textured blocks; scaled low-poly forest trees | Latest owner-preferred terrain treatment awaits CI and Android screenshot comparison |
 | Colonists | Three simulated colonists with health, hunger, thirst, stamina, local memory, bounded navigation and simple utility-driven behavior | Needs/AI are prototypes, not a complete survival system |
 | Mining designations | Tap a solid block in Mine mode to mark or cancel it; exclusive job reservation and path-to-work behavior | Mining execution and navigation edge cases are pending test results |
 | Resources | Mining creates tracked, unhauled block resources | Physical item meshes and polished inventory UX are not included |
@@ -116,7 +116,7 @@ For a trustworthy release candidate, require passing Godot imports/tests for the
 
 ## Design, assets and contribution rules
 
-The approved direction is an offline humanoid colony simulator—not the older Cubot/battery-based concept. The included Cube World subset contains **107 GLTF models plus `Atlas.png` and `Blocks_PixelArt.png`**. Gameplay terrain intentionally uses the regular **`Blocks/` + `Atlas.png` low-poly palette** to match the Cube World characters and trees; the separate Pixel Blocks atlas remains in the source asset library, not on the main terrain. The repository's wider asset catalog reports **1,076 GLB/glTF files across 14 packs**; counts include animation assets and do not necessarily indicate unique models.
+The approved direction is an offline humanoid colony simulator—not the older Cubot/battery-based concept. The included Cube World subset contains **107 GLTF models plus `Atlas.png` and `Blocks_PixelArt.png`**. Gameplay terrain uses the owner's preferred **`Pixel Blocks/` + `Blocks_PixelArt.png`** tiles. A small spatial shader softens hard pixel edges with mipmap filtering and lowers color contrast/saturation while preserving the texture. Trees retain adjusted scale and character models remain unchanged. The repository's wider asset catalog reports **1,076 GLB/glTF files across 14 packs**; counts include animation assets and do not necessarily indicate unique models.
 
 See [assets/ASSET_CATALOG.txt](assets/ASSET_CATALOG.txt) and [assets/CREDITS.md](assets/CREDITS.md) for provenance and credits. Retain bundled third-party licensing files. Asset licenses do not automatically license the complete game.
 
