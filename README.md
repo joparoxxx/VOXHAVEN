@@ -4,7 +4,7 @@
 
 Voxhaven is a **work-in-progress, fully offline 3D colony simulator for Android**, developed with Godot 4 and GDScript. The goal is a seeded, Minecraft-inspired voxel world where humanoid colonists independently gather resources, build a settlement, and manage their needs.
 
-> **Development preview — not a finished game.** The unified Mine/woodcut workflow, one-job-per-colonist occupations, tree-support protection, and compact toolbar passed [Godot validation #46152304537](https://github.com/joparoxxx/VOXHAVEN/actions/runs/46152304537) on commit `83cc578`. The [Android ARM64 debug APK build #46152358440](https://github.com/joparoxxx/VOXHAVEN/actions/runs/46152358440) succeeded from the same gameplay code; the later commit only updates its workflow trigger. Actual Android touch input, layout, framerate and animation smoothness still need device verification.
+> **Development preview — not a finished game.** The owner-requested no-gravity mining safety update passed [Godot validation #46164625692](https://github.com/joparoxxx/VOXHAVEN/actions/runs/46164625692) on commit `19997b7`: miners cannot remove blocks underneath living colonists or standing trees, including previously queued work. The matching Android ARM64 debug APK built and verified successfully in [build #46164683226](https://github.com/joparoxxx/VOXHAVEN/actions/runs/46164683226) (`891e17d`, workflow-only follow-up). Real Android idle FPS, touch controls and installation still require device testing.
 
 ## Current development branch
 

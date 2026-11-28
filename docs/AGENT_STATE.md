@@ -105,7 +105,7 @@
 - HUD now shows chunk backlog/worker status and gravity/job-search probes per second alongside FPS. Use this to distinguish pending chunk-mesh/collision work from gravity/AI and GPU cost on Android.
 - **No changes** to the 16×16 chunk dimension, original zoom-based radius 2–4, original chunk loading/unloading behavior, camera gesture controls, or approved 3D models. Godot tests and APK export on this exact revision remain pending at this checkpoint.
 
-## 2026-11-29 owner-directed removal of gravity and mining support protection — CI pending
+## 2026-11-29 owner-directed removal of gravity and mining support protection — CI PASSED
 - Owner prefers removing gravity/falling entirely after idle FPS declines; workers must not mine any block with a colonist **or a standing Cube World tree above it**. This supersedes all earlier gravitational-falling behavior and documentation.
 - `colony/colony_simulation.gd`: removed all per-tick ground support probes, cache and fall scans. Kept existing 0.25 s walking/jobs, specialized Miner/Woodcutter/Hauler roles and staggered job discovery.
 - `colony/mining_jobs.gd`: keeps a live reference to the three colonists; any living colonist above the same x,z column protects the full vertical column. The deterministic unharvested tree decorations similarly protect their supporting grass and all underlying blocks. Guard runs at manual designation, worker job reservation and **immediately before block removal**; last-second changes preserve the queued work order for retry.
@@ -113,3 +113,8 @@
 - `colony/colonist_view.gd`: removed the Falling animation branch and fast-fall interpolation. `world/world_view.gd` retains camera gesture controls and 16×16 chunk streaming, removes the obsolete Gravity/s HUD counter, and blocks manual air-edit deletion of protected voxels. Removed `World.edit_revision` introduced solely for support checking.
 - Replaced outdated falling regression with `tests/mining_support_camera_test.gd`: verifies worker/tree protection at multiple depths, pre-existing queued job behavior when a worker steps onto a target, ability to mine after clearing the blocker, no automatic gravity, and unchanged camera orbit math. CI workflow updated.
 - This is a gameplay behavior change requested by the owner. It does not promise a particular FPS increase; verify Godot tests, Android APK and actual idle-device FPS separately. Do not merge into main.
+
+### Verification of no-gravity mining protection
+- **Godot validation PASS:** https://github.com/joparoxxx/VOXHAVEN/actions/runs/46164625692 at gameplay/test commit `19997b7121a8f117439d7469dbb738fa0a33c5b6`. Colony AI/test loop now includes `mining_support_camera_test.gd` and is passing, as are voxel data, terrain and world rendering smoke tests. Deleted obsolete falling test.
+- **Android debug APK PASS:** https://github.com/joparoxxx/VOXHAVEN/actions/runs/46164683226 at `891e17dfd5bc2652569571ac6ca27a00b72b55c2`; import, signed ARM64 export, archive integrity and artifact upload completed successfully. This is the same gameplay code as the passing Godot run.
+- User-observed previous build fell to 4 FPS when idle. Eliminating support/gravity probes may reduce CPU work, but **no measured improvement may be claimed** until the user tests this APK on the same phone/world with matching conditions.
