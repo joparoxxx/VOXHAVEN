@@ -17,9 +17,10 @@ var colony := Colony.new()
 var colonist_views: Dictionary = {}
 var atlas: Dictionary = {}
 const SAVE_PATH := "user://world.json"
+# CHUNK_SIZE in voxel_world.gd is fixed at 16x16. Keep the original
+# zoom-based loading/unloading radius; do not conflate it with chunk dimensions.
 const MIN_RADIUS := 2
-const MAX_RADIUS := 3
-const MOBILE_RADIUS := 2
+const MAX_RADIUS := 4
 const HUD_UPDATE_INTERVAL := 0.25
 const UNLOAD_BUFFER := 1
 var render_radius := MIN_RADIUS
@@ -537,8 +538,7 @@ func update_camera() -> void:
 func refresh_chunks() -> void:
 	var next := world.chunk_of(Vector3i(focus.floor()))
 	var viewport_size := get_viewport().get_visible_rect().size
-	var device_radius := MOBILE_RADIUS if OS.has_feature("mobile") else MAX_RADIUS
-	var desired := clampi(ceili(zoom * maxf(1.0,viewport_size.x/maxf(1.0,viewport_size.y)) / 32.0)+1,MIN_RADIUS,device_radius)
+	var desired := clampi(ceili(zoom * maxf(1.0,viewport_size.x/maxf(1.0,viewport_size.y)) / 32.0)+1,MIN_RADIUS,MAX_RADIUS)
 	if "--world-smoke" in OS.get_cmdline_user_args(): desired = MIN_RADIUS
 	if next == center_chunk and desired == render_radius: return
 	center_chunk = next

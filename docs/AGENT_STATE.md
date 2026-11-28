@@ -84,3 +84,9 @@
 - Removed automatic colonist follow and the Follow button. The one toggle now says Camera ON/OFF; ON gives one-finger orbit, tap-to-set fixed pivot, pinch zoom and two-finger pan. OFF is normal command selection and free panning. All camera motion is user-driven, and the mine/select controls remain available with camera OFF.
 - Performance investigation: `world_view.gd` loaded as many as 81 chunks at 4-chunk radius on widescreen mobile and rebuilt HUD strings each frame. Capped mobile at 2-chunk radius (25 chunks), desktop at 3 (49), throttled info to 0.25 seconds, and removed all per-frame follow/camera/chunk calls.
 - Fixed `tests/colonist_fall_camera_test.gd` parse error (Variant from `set_block` was used as a bool); CI had failed importing that test. Actual runtime FPS and visual/camera input quality are still unverified on Android.
+
+## 2026-11-28 owner correction — original 16x16 chunk streaming restored
+- Owner explicitly rejected altering chunk loading/unloading for FPS. The real `World.CHUNK_SIZE` always remained **16×16 horizontal blocks**. Previous optimization changed loaded *radius* to 2 on mobile / 3 desktop, not the per-chunk dimensions.
+- Restored `world/world_view.gd` to the original zoom-dependent shared radius: MIN_RADIUS=2, MAX_RADIUS=4, UNLOAD_BUFFER=1, and the exact prior desired-radius calculation for all platforms. No edits to mesh generation, per-chunk collision, terrain coordinates or block data.
+- Kept unrelated optimizations: 4 Hz HUD info and no automatic follow/per-frame camera chunk updates. Future FPS improvements should be profiled and must not silently change the approved chunk streaming/unloading policy.
+- Strengthened voxel-world and mesh regression tests with chunk size 16, boundary mapping and mesh local bounds. CI and on-device performance for this correction pending.

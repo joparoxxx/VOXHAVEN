@@ -116,7 +116,7 @@ The UI and multitouch input are prototypes; physical Android device testing rema
 - **Camera ON:** a 3D-object-viewer style camera. One-finger drag orbits (yaw/pitch), a tap sets the fixed orbit pivot, two-finger drag pans and pinch zooms. There is **no automatic follow** of a colonist.
 - **Camera OFF:** gameplay tap commands and Select gestures are active; dragging pans the camera when not selecting.
 - Desktop: right-drag orbit, left-drag pan or select, mouse wheel zoom. Reset via Tools → Reset Camera.
-- **Mobile FPS budget:** up to a 5×5 chunk window instead of 9×9, no continuous camera/chunk checks while idle, and HUD refresh at 4 Hz rather than every frame. This reduces work; measured phone FPS still requires a real-device check.
+- **Original 16 × 16 chunk streaming restored:** chunk dimensions are fixed at 16 × 16 horizontal blocks. The zoom-based loading/unloading window has been returned to the previous shared radius 2–4 (5×5 to 9×9 chunks); the temporary mobile-only 2-chunk cap is removed. Independent optimizations—4 Hz HUD updates and no automatic follow or idle camera reloads—remain. Actual Android FPS still needs profiling before any further streaming changes.
 
 ## Compact tools and single Mine workflow
 
