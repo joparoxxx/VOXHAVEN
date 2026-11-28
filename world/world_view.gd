@@ -59,6 +59,13 @@ var info: Label
 var speed_button: Button
 var autosave_elapsed := 0.0
 var hud_elapsed := 0.0
+# Minimal on-device diagnostics to distinguish idle AI/gravity work from
+# ongoing chunk meshing. 1 Hz counters are not collected every draw frame.
+var metric_elapsed := 0.0
+var metric_gravity_count := 0
+var metric_job_count := 0
+var gravity_probes_per_sec := 0
+var job_searches_per_sec := 0
 # Match the pre-orbit range; extra-wide zoom revealed much more terrain
 # and caused expensive render/input spikes on Android.
 const MIN_ZOOM := 12.0
@@ -274,7 +281,7 @@ func test_control(action: String) -> void:
 
 func update_info() -> void:
 	if info == null: return
-	info.text = "FPS: %d | Chunks: %d | Colony time: %ds | Mining: %d | Excavations: %d | Trees: %d | Drops: %d | Stock: %d" % [Engine.get_frames_per_second(),chunks.size(),int(colony.elapsed),colony.mining.designations.size(),colony.dig.columns.size(),colony.woodcut.designations.size(),colony.logistics.unhauled_units(),colony.logistics.stored_units()]
+	info.text = "FPS %d | Chunks %d | Queue %d | Mesh %s | Gravity/s %d | AI/s %d\nTime %ds | Mine %d | Dig %d | Trees %d | Drops %d | Stock %d" % [Engine.get_frames_per_second(),chunks.size(),pending.size(),"BUSY" if worker.is_started() else "idle",gravity_probes_per_sec,job_searches_per_sec,int(colony.elapsed),colony.mining.designations.size(),colony.dig.columns.size(),colony.woodcut.designations.size(),colony.logistics.unhauled_units(),colony.logistics.stored_units()]
 	if selected_index >= 0 and selected_index < colony.colonists.size():
 		var c = colony.colonists[selected_index]
 		info.text += "\n%s / %s / %s | HP %d | Stamina %d" % [c.display_name,c.job_role,c.activity,int(c.health),int(c.stamina)]
@@ -574,6 +581,13 @@ func _process(_delta: float) -> void:
 		chunk_check_dirty = false
 		refresh_chunks()
 	if simulation_speed > 0.0: colony.advance(_delta*simulation_speed)
+	metric_elapsed += _delta
+	if metric_elapsed >= 1.0:
+		metric_elapsed = fmod(metric_elapsed,1.0)
+		gravity_probes_per_sec = maxi(0,colony.gravity_probe_count-metric_gravity_count)
+		job_searches_per_sec = maxi(0,colony.job_search_count-metric_job_count)
+		metric_gravity_count = colony.gravity_probe_count
+		metric_job_count = colony.job_search_count
 	hud_elapsed += _delta
 	if hud_elapsed >= HUD_UPDATE_INTERVAL:
 		hud_elapsed = 0.0
