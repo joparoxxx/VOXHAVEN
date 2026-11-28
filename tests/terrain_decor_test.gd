@@ -15,7 +15,9 @@ func _initialize() -> void:
 				count += 1
 				ok = ok and a.chunk_of(p)==key and a.block_at(p)==World.Block.AIR
 				ok = ok and a.block_at(p-Vector3i.UP)==World.Block.GRASS
-				ok = ok and not Decor.tree_positions(a,key,{p:true}).has(p)
+				var removed: Dictionary = {}
+				removed[p] = true
+				ok = ok and not Decor.tree_positions(a,key,removed).has(p)
 	ok = ok and count>0
 	print("Decoration test: ", "PASS" if ok else "FAIL", " trees=",count)
 	quit(0 if ok else 1)
