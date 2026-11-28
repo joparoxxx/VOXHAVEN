@@ -3,6 +3,7 @@ on:
   workflow_dispatch:
   # Triggered only when the APK workflow itself changes.
   # Ordinary gameplay commits do not launch an APK export.
+  # QA export requested for softer Cube World pixel-textured terrain.
   push:
     branches:
       - game/colony-foundation
