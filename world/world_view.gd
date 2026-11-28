@@ -227,7 +227,7 @@ func _on_camera_follow_toggled(enabled: bool) -> void:
 		follow_worker_id = worker.id
 		follow_anchor = Vector3(worker.position)+Vector3(0.5,0.8,0.5)
 	if status != null:
-		status.text = "Follow ON: drag to orbit, tap target, pinch to zoom" if enabled else "Free camera: drag to pan; two fingers to orbit/zoom"
+		status.text = "Follow ON: drag to orbit, tap target, pinch to zoom" if enabled else "Free: drag pan, two fingers pan/zoom; Follow ON enables orbit"
 
 func reset_camera() -> void:
 	camera_follow = false
@@ -790,3 +790,30 @@ func _unhandled_input(event: InputEvent) -> void:
 				orbit_camera(event.relative)
 			elif mouse_dragged:
 				pan_camera(event.relative)
+
+func spawn_colony(spawn: Vector3i) -> void:
+	colony.initialize(spawn+Vector3i.UP)
+	colony.terrain = world
+	for i in colony.colonists.size():
+		colony.set_role(colony.colonists[i].id,ROLES[i])
+	var candidates: Array[Vector3i] = []
+	for radius in range(0,9):
+		for z in range(-radius,radius+1):
+			for x in range(-radius,radius+1):
+				if maxi(absi(x),absi(z)) != radius: continue
+				for y in range(World.HEIGHT-2,0,-1):
+					var p := Vector3i(spawn.x+x,y,spawn.z+z)
+					if world.block_at(p-Vector3i.UP) != World.Block.AIR and world.block_at(p) == World.Block.AIR and world.block_at(p+Vector3i.UP) == World.Block.AIR:
+						candidates.append(p)
+						break
+				if candidates.size() >= 3: break
+			if candidates.size() >= 3: break
+		if candidates.size() >= 3: break
+	for i in mini(candidates.size(),colony.colonists.size()):
+		var colonist = colony.colonists[i]
+		colonist.position = candidates[i]
+		var view := ColonistView.new()
+		add_child(view)
+		view.setup(colonist)
+		view.visible = false
+		colonist_views[colonist.id] = view
