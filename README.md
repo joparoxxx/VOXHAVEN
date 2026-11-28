@@ -23,7 +23,7 @@ Voxhaven is a **work-in-progress, fully offline 3D colony simulator for Android*
 | World streaming | Exposed-face chunk meshes, collision, bounded chunk loading, background CPU mesh generation, terrain edits | Threading and rendering need full Godot / Android testing |
 | Cube World art | 107 GLTF models and two atlas images; four humanoid character variants; softened Cube World pixel-textured blocks; scaled low-poly forest trees | Godot CI passed; device screenshot comparison remains pending |
 | Colonists | Three simulated colonists with health, hunger, thirst, stamina, local memory, bounded navigation and simple utility-driven behavior | Needs/AI are prototypes, not a complete survival system |
-| Mining and excavation | Single-block Mine, drag/two-tap Select, bounded Dig Depth (1–8), staged shallow-first area mining with save/load | Deep pits may require accessible ramps or stairs; full underground pathfinding is not implemented |
+| Mining and excavation | Unified Mine command auto-selects chopping vs terrain dig; Select + depth for area; living tree support is protected | Deep shafts still require routes/ramps; physical Android input must be tested |
 | Resources | Mining and tree chopping create distinct stone/block and wood resource records | Resource drops are still logical records rather than world item meshes |
 | Hauling and storage | Autonomous pickup/delivery to a visible Cube World crate stockpile with relocatable ground pad and per-resource counts | Initial prototype has one stockpile and no capacity, building, or full inventory UI |
 | Save/load | Seed, terrain edits, mining/woodcut designations, felled-tree state, unhauled items, stock and stockpile position | Colonist state and full simulation recovery remain pending |
@@ -107,15 +107,15 @@ These are commands to **run**, not claims that the latest commit has passed them
 
 The UI and multitouch input are prototypes; physical Android device testing remains outstanding.
 
-## Select, Dig and editing tools
+## Compact tools and single Mine workflow
 
-The mobile toolbar now includes **Pan, Select, Dig, Chop Area, Mine, Chop, Stockpile, Place, Inspect, Cancel, Save**, and camera zoom controls.
+The Android toolbar now keeps **Mine**, **Select**, **Tools**, **Worker**, **Job**, **Camera**, and **Save** together, with smaller controls for depth, zoom and simulation speed. Secondary actions (**Pan, Place, Stockpile, Inspect, Cancel**) live in the Tools menu; camera rotation, reset and focus live in the Camera menu. Independent Dig/Chop/Chop Area buttons have been removed.
 
-1. Tap **Select**, then touch two top-face corners of the area, or drag one finger across the ground. The translucent preview shows the footprint; amber warns when too large.
-2. Use **Depth - / Depth +** to choose **1–8 block layers downward**. Tap **Dig** to queue the selected ground columns. Each selection is capped at **64 cells** (and at most 64 managed columns total); only 12 mining jobs are active simultaneously.
-3. The planner queues accessible surface layers before deeper ones. Mining remains a physical colonist activity—**it does not instantly remove terrain**. Deep/vertical pits can pause when no walkable route exists. A future stair/ramp tool is required for guaranteed deep excavation.
-4. **Chop Area** designates trees within a selection; **Inspect** shows block coordinates/type; **Cancel** cancels tasks across a selection, or lets you tap an individual designation. **Pan** restores single-finger camera drag. Existing Mine, Chop, Stockpile, Place, Save and camera controls remain.
-5. Excavation goals and current mining designations are saved in the local version-1-compatible world file. The visual selection itself is temporary.
+- **Mine** is the only resource work order: tap exposed terrain to excavate the block or the chosen depth (1–8). Tap the ground supporting a standing Cube World tree to designate **woodcutting instead**. Tap again to cancel that one order.
+- **Select** uses two ground taps or one-finger drag to outline up to 64 columns. Press **Mine** to automatically designate mining on suitable columns and chopping on standing trees in the area. Tree-support grass is **never queued for mining while the tree is standing**. Once cut, that block requires an explicit new mining order.
+- The three in-game colonists start with distinct occupations: **Miner, Woodcutter, Hauler**. Tap **Worker** to cycle the selected character; choose a role in the adjacent **Job** menu. A role change clears their previous reservation and returns any carried resources to the work queue. Each worker is limited to one active job at a time.
+- Worker roles, excavation requests, felling history, mine/chop orders, stockpile and terrain remain locally saveable. Old saves without a worker-roles field get the default roles.
+- This is a prototype: if no walkable path exists, deep excavations can remain blocked until an access/ramp system is implemented. Godot CI and physical Android UX are tracked separately.
 
 ## Continuous colonist movement (development)
 

@@ -63,3 +63,11 @@
 - WorldView now exposes Pan / Select (two taps or touch-drag) / Dig / Chop Area / Mine / Chop / Stockpile / Place / Inspect / Cancel / Save tools with translucent rectangular selection preview and 1–8 depth controls. Existing direct mining, woodcutting, hauling and visual models remain intact.
 - `tests/dig_depth_test.gd` covers bounded requests, successive layers, varying surface height, and save/load. CI workflow includes the new test. The planner only queues reachable work under existing navigation rules; vertical shafts may remain blocked until stairs/ramp pathing is added.
 - Latest changes are committed to `game/colony-foundation`, with no merge to main. Godot CI and Android APK must be verified separately for this specific revision.
+
+## 2026-11-28 unified Mine, protected trees and exclusive colonist roles — CI pending
+- Owner requested removal of the separate Dig, Mine and Chop/Chop Area toolbar buttons. Reorganized WorldView into compact main toolbar, Tools dropdown for secondary actions, Camera dropdown, Worker cycle and Job role menu; kept depth/zoom/speed accessible.
+- Added `colony/work_orders.gd` for the unified Mine dispatcher: a single tap on ground beneath a living Cube World tree designates woodcutting, a block tap mines/excavates according to Dig Depth, and a selected area dispatches both work categories automatically.
+- `MiningJobs.is_tree_base` uses the deterministic Cube World tree positions and live harvested set. Living trees' supporting blocks are rejected by manual mining, reserved jobs and staged excavation; after chopping, mining needs a newly placed order.
+- Default **playable** worker occupations: Miner, Woodcutter, Hauler (one job per worker). `Colony.set_role` releases old reservations/carried items before assigning the new occupation. Legacy GDScript-only tests continue to use Generalist role for backward compatibility. Roles are saved as optional worker_roles under save format 1.
+- Added `tests/role_and_mine_tool_test.gd` covering dispatcher, root protection, chopping/ground integrity, mutually exclusive active jobs and role persistence. Existing mining, woodcutting, save and render tests remain in CI. No changes to 3D models or main.
+- NOT YET VALIDATED: this commit's Godot CI and Android debug APK; Android device UI and interaction still need manual verification.
