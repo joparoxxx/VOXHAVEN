@@ -21,9 +21,13 @@ var woodcut := WoodcutJobs.new()
 var dig := DigPlanner.new()
 var elapsed := 0.0
 var accumulator := 0.0
+# Excavation planner needs changes, not four full area scans each second.
+var planner_refresh_elapsed := 0.0
 
 func initialize(spawn: Vector3i) -> void:
 	mining.reset()
+	if not mining.mined.is_connected(_on_mining_completed):
+		mining.mined.connect(_on_mining_completed)
 	logistics.reset(spawn)
 	logistics.mining = mining
 	woodcut.reset()
@@ -34,6 +38,7 @@ func initialize(spawn: Vector3i) -> void:
 	colonists.clear()
 	elapsed = 0.0
 	accumulator = 0.0
+	planner_refresh_elapsed = 0.0
 	for i in 3:
 		colonists.append(Colonist.new(i+1,"Colonist %d" % (i+1),spawn))
 
@@ -46,7 +51,15 @@ func advance(delta: float) -> void:
 	accumulator += maxf(0.0,delta)
 	var steps := 0
 	while accumulator >= STEP and steps < MAX_STEPS:
-		dig.schedule()
+		# Existing jobs continue every 0.25 s; only poll for stale external
+		# excavation edits once a second. New mined blocks schedule immediately.
+		if not dig.columns.is_empty():
+			planner_refresh_elapsed += STEP
+			if planner_refresh_elapsed >= 1.0:
+				planner_refresh_elapsed = 0.0
+				dig.schedule()
+		else:
+			planner_refresh_elapsed = 0.0
 		for colonist in colonists:
 			colonist.tick(STEP)
 			if terrain != null and colonist.health>0.0:
@@ -253,3 +266,10 @@ func _settle_unsupported(c: Colonist) -> bool:
 	c.activity = "Falling"
 	c.remember(landing)
 	return true
+
+## Immediately unlock the next excavation layer on a completed mine. Unlike
+## constant per-tick scans, this work only runs when actual terrain changes.
+func _on_mining_completed(_position: Vector3i, _block: int) -> void:
+	if not dig.columns.is_empty():
+		planner_refresh_elapsed = 0.0
+		dig.schedule()
