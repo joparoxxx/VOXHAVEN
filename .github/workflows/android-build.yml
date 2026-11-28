@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   # Triggered only when the APK workflow itself changes.
   # Ordinary gameplay commits do not launch an APK export.
-  # QA export: Select and Dig Depth plus save script parser fix (8aa5f3f).
+  # QA export: compact tools, unified Mine and per-worker jobs (83cc578).
   push:
     branches:
       - game/colony-foundation
