@@ -327,7 +327,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				if index != event.index: other = touch_points[index]
 			var previous: Vector2 = touch_points[event.index]
 			var old_distance := previous.distance_to(other)
-			var new_distance := event.position.distance_to(other)
+			var new_distance: float = (event as InputEventScreenDrag).position.distance_to(other)
 			if old_distance > 8.0 and new_distance > 8.0:
 				set_zoom(zoom * old_distance / new_distance)
 		elif touch_points.size() == 1 and not multi_touch:
