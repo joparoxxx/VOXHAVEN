@@ -11,6 +11,8 @@ var moisture := FastNoiseLite.new()
 var caves := FastNoiseLite.new()
 var ore := FastNoiseLite.new()
 var edits: Dictionary = {}
+# Incremented only by terrain edits; invalidates cached colonist ground checks.
+var edit_revision := 0
 
 func _init(seed_value: int = 1) -> void:
 	world_seed = seed_value
@@ -54,6 +56,8 @@ func block_at(p: Vector3i) -> int:
 
 func set_block(p: Vector3i, block: int) -> bool:
 	if p.y < 0 or p.y >= HEIGHT or block < 0 or block > Block.GOLD: return false
+	if not edits.has(p) or int(edits[p]) != block:
+		edit_revision += 1
 	edits[p] = block
 	return true
 
