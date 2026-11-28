@@ -1,5 +1,8 @@
 extends RefCounted
 const World = preload("res://world/voxel_world.gd")
+# Imported Cube World trees stand about 6–8 source units high; resize to
+# balance their silhouettes against 0.65-scaled, ~1.8-unit humanoids.
+const TREE_SCALE := 0.56
 const TREES = [preload("res://assets/library/Quaternius_Cube_World/Environment/Tree_1.gltf"), preload("res://assets/library/Quaternius_Cube_World/Environment/Tree_2.gltf"), preload("res://assets/library/Quaternius_Cube_World/Environment/Tree_3.gltf")]
 
 static func tree_positions(world: World, key: Vector2i) -> Array[Vector3i]:
@@ -21,5 +24,6 @@ static func populate(world: World, key: Vector2i, parent: Node3D) -> void:
 	for p in tree_positions(world,key):
 		var tree := TREES[posmod(hash(p), TREES.size())].instantiate() as Node3D
 		if tree == null: continue
+		tree.scale = Vector3.ONE * TREE_SCALE
 		parent.add_child(tree)
 		tree.position = Vector3(p)-parent.position+Vector3(0.5,0,0.5)

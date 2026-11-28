@@ -25,3 +25,10 @@
 - Integrated logistics after mining in fixed-step colony simulation and UI; in-world status displays pending drops and stored units. Saves now optionally include pending drops, inventory, depot and recovery of carried items into stock while retaining world save format version 1 compatibility.
 - Added `tests/resource_logistics_test.gd` to the Godot CI workflow, covering mining→pickup→delivery, persisted stock and unhauled drops, and dropped inventory when a worker is released. CI is pending; no claim of successful Godot or Android runtime tests.
 - This first storage vertical slice has no visual warehouse building, physical pickup animation, crafting or construction, and does not finish Phase 4.4.
+
+## 2026-11-28 visual cohesion update — pending CI / Android rebuild
+- Owner supplied a screenshot showing noisy pixel-art terrain beside low-poly Cube World humanoids and oversized flat-canopy trees.
+- Root cause in code: terrain used `Pixel Blocks/` and the `Blocks_PixelArt.png` (80×80) while character and environment GLTFs use the regular `Atlas.png` 32×32 color palette.
+- `world/terrain_atlas.gd` now samples regular Cube World `Blocks/Block_*.gltf` face colors using one source triangle UV per face (prevents gradients between palette swatches). All ten terrain block IDs remain mapped; sand/ores use tinted low-poly placeholder variants.
+- `world/terrain_decor.gd` now scales three approved tree models to 0.56× so canopies are less oversized relative to characters. Source model/texture files are untouched.
+- Atlas/decor regression tests verify style asset paths, swatch sampling and scale bounds. CI and physical Android appearance are not yet validated for this commit; compare screenshots after a new debug APK build.

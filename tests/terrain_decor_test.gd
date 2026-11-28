@@ -4,7 +4,7 @@ const Decor = preload("res://world/terrain_decor.gd")
 func _initialize() -> void:
 	var a := World.new(123)
 	var b := World.new(123)
-	var ok := true
+	var ok := Decor.TREE_SCALE > 0.0 and Decor.TREE_SCALE < 0.7
 	var count := 0
 	for z in range(-8,9):
 		for x in range(-8,9):
