@@ -15,6 +15,10 @@ var route: Array[Vector3i] = []
 var work_progress := 0.0
 var path_wait := 0.0
 var actions: Array[String] = []
+# Only one occupation and one active assigned job per colonist.
+# Generalist is retained as the legacy/test default; the playable colony
+# assigns a distinct role to each of its three workers.
+var job_role: String = "Generalist"
 var activity := "Idle"
 var next_decision := 0.0
 

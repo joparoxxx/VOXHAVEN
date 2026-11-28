@@ -2,7 +2,7 @@ extends RefCounted
 const World = preload("res://world/voxel_world.gd")
 const VERSION := 1
 
-static func save(world: World, path: String, mining_jobs: Array = [], logistics_state: Dictionary = {}, woodcut_state: Dictionary = {}, dig_state: Dictionary = {}) -> bool:
+static func save(world: World, path: String, mining_jobs: Array = [], logistics_state: Dictionary = {}, woodcut_state: Dictionary = {}, dig_state: Dictionary = {}, worker_roles: Array = []) -> bool:
 	var records: Array = []
 	for p in world.edits:
 		records.append([p.x,p.y,p.z,world.edits[p]])
@@ -12,7 +12,7 @@ static func save(world: World, path: String, mining_jobs: Array = [], logistics_
 			designations.append([p.x,p.y,p.z])
 	var file := FileAccess.open(path + ".tmp",FileAccess.WRITE)
 	if file == null: return false
-	file.store_string(JSON.stringify({"version":VERSION,"seed":world.world_seed,"edits":records,"mining_designations":designations,"logistics":logistics_state,"woodcut":woodcut_state,"dig":dig_state}))
+	file.store_string(JSON.stringify({"version":VERSION,"seed":world.world_seed,"edits":records,"mining_designations":designations,"logistics":logistics_state,"woodcut":woodcut_state,"dig":dig_state,"worker_roles":worker_roles}))
 	file.close()
 	return DirAccess.rename_absolute(path+".tmp",path) == OK
 
@@ -83,3 +83,21 @@ static func restore_dig(path: String) -> Dictionary:
 	if data is Dictionary and data.get("version") == VERSION and data.get("dig", {}) is Dictionary:
 		return data.get("dig", {})
 	return {}
+
+## Optional per-colonist occupation; older save files keep default assignments.
+static func restore_worker_roles(path: String) -> Array[String]:
+	var result: Array[String] = []
+	if not FileAccess.file_exists(path):
+		return result
+	var data = JSON.parse_string(FileAccess.get_file_as_string(path))
+	if not data is Dictionary or data.get("version") != VERSION:
+		return result
+	var roles = data.get("worker_roles",[])
+	if not roles is Array or roles.size() > 3:
+		return result
+	for role in roles:
+		if role is String and role in ["Miner","Woodcutter","Hauler"]:
+			result.append(role)
+		else:
+			return []
+	return result

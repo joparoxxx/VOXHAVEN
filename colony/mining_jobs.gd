@@ -2,6 +2,7 @@ extends RefCounted
 ## Offline mining designations, exclusive colonist reservations and unhauled drops.
 const World = preload("res://world/voxel_world.gd")
 const Nav = preload("res://colony/navigation.gd")
+const Decor = preload("res://world/terrain_decor.gd")
 const Colonist = preload("res://colony/colonist_state.gd")
 const MAX_JOBS := 256
 const MAX_JOB_SCAN := 6
@@ -10,6 +11,7 @@ const ADJACENT := [Vector3i.LEFT, Vector3i.RIGHT, Vector3i.FORWARD, Vector3i.BAC
 signal mined(position: Vector3i, block: int)
 
 var terrain: World
+var harvested_trees: Dictionary = {} # Shared live set of already-felled trees
 var designations: Dictionary = {} # Vector3i -> worker id (0 = available)
 var assignments: Dictionary = {} # worker id -> Vector3i
 var work_positions: Dictionary = {} # worker id -> safe adjacent standing cell
@@ -21,8 +23,15 @@ func reset() -> void:
  work_positions.clear()
  drops.clear()
 
+func is_tree_base(p: Vector3i) -> bool:
+ # Real trees are deterministic decorations above their supporting grass.
+ # Never uproot a standing tree by mining or by a queued excavation.
+ if terrain == null or p.y != terrain.surface_at(p.x,p.z):
+  return false
+ return Decor.tree_positions(terrain,terrain.chunk_of(p),harvested_trees).has(p+Vector3i.UP)
+
 func designate(p: Vector3i) -> bool:
- if terrain == null or designations.has(p) or designations.size() >= MAX_JOBS:
+ if terrain == null or designations.has(p) or designations.size() >= MAX_JOBS or is_tree_base(p):
   return false
  if terrain.block_at(p) == World.Block.AIR:
   return false
@@ -73,7 +82,7 @@ func reserve(c: Colonist) -> bool:
   if int(designations[p]) != 0:
    continue
   inspected += 1
-  if terrain.block_at(p) == World.Block.AIR:
+  if terrain.block_at(p) == World.Block.AIR or is_tree_base(p):
    cancel(p)
    continue
   var chosen := Vector3i.ZERO
@@ -114,7 +123,7 @@ func complete(c: Colonist) -> bool:
   release(c.id)
   return false
  var block := terrain.block_at(p)
- if block == World.Block.AIR:
+ if block == World.Block.AIR or is_tree_base(p):
   cancel(p)
   return false
  if not terrain.set_block(p, World.Block.AIR):

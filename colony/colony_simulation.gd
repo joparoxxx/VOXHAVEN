@@ -28,6 +28,7 @@ func initialize(spawn: Vector3i) -> void:
 	logistics.mining = mining
 	woodcut.reset()
 	woodcut.logistics = logistics
+	mining.harvested_trees = woodcut.harvested
 	dig.reset()
 	dig.mining = mining
 	colonists.clear()
@@ -40,6 +41,7 @@ func advance(delta: float) -> void:
 	mining.terrain = terrain
 	logistics.terrain = terrain
 	woodcut.terrain = terrain
+	mining.harvested_trees = woodcut.harvested
 	dig.terrain = terrain
 	accumulator += maxf(0.0,delta)
 	var steps := 0
@@ -129,12 +131,23 @@ func execute(c: Colonist) -> void:
 		c.work_progress = 0.0
 		if woodcut.complete(c):
 			return
-	elif c.stamina >= 15.0 and logistics.reserve(c):
-		c.work_progress = 0.0
-		return
-	elif c.stamina >= 15.0 and _reserve_work(c):
-		c.work_progress = 0.0
-		return
+	if c.stamina >= 15.0 and active_job_count(c.id) == 0:
+		match c.job_role:
+			"Miner":
+				if mining.reserve(c):
+					c.activity = "Going to mine"
+					return
+			"Woodcutter":
+				if woodcut.reserve(c):
+					c.activity = "Going to chop"
+					return
+			"Hauler":
+				if logistics.reserve(c):
+					return
+			_:
+				# Preserve existing standalone simulation tests and old generalist AI.
+				if logistics.reserve(c) or _reserve_work(c):
+					return
 	if c.actions.is_empty():
 		if elapsed<c.next_decision: return
 		c.next_decision=elapsed+3.0
@@ -171,3 +184,35 @@ func _reserve_work(c: Colonist) -> bool:
 	if assigned:
 		c.activity = "Going to chop" if woodcut.has_assignment(c.id) else "Going to mine"
 	return assigned
+
+## Centralized job ownership. Work reservations may never overlap.
+func active_job_count(worker_id: int) -> int:
+	return int(mining.has_assignment(worker_id)) + int(woodcut.has_assignment(worker_id)) + int(logistics.has_job(worker_id))
+
+func set_role(worker_id: int, new_role: String) -> bool:
+	if not new_role in ["Miner","Woodcutter","Hauler","Generalist"]:
+		return false
+	for c in colonists:
+		if c.id != worker_id:
+			continue
+		if c.job_role == new_role:
+			return true
+		# Release the current reservation before taking a different occupation.
+		# Logistics.release puts any carried item back on the ground.
+		mining.release(c.id)
+		woodcut.release(c.id)
+		logistics.release(c.id,c.position)
+		c.route.clear()
+		c.actions.clear()
+		c.work_progress = 0.0
+		c.path_wait = 0.0
+		c.job_role = new_role
+		c.activity = "Idle"
+		return true
+	return false
+
+func worker_roles() -> Array[String]:
+	var result: Array[String] = []
+	for c in colonists:
+		result.append(c.job_role)
+	return result
