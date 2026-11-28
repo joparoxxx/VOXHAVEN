@@ -6,6 +6,7 @@ const Decision = preload("res://colony/decision.gd")
 const MiningJobs = preload("res://colony/mining_jobs.gd")
 const ResourceLogistics = preload("res://colony/resource_logistics.gd")
 const WoodcutJobs = preload("res://colony/woodcut_jobs.gd")
+const DigPlanner = preload("res://colony/dig_planner.gd")
 var terrain: World
 # Four navigable cells per second. Rendering catches up over each 0.25 s tick.
 const STEP := 0.25
@@ -17,6 +18,7 @@ var colonists: Array[Colonist] = []
 var mining := MiningJobs.new()
 var logistics := ResourceLogistics.new()
 var woodcut := WoodcutJobs.new()
+var dig := DigPlanner.new()
 var elapsed := 0.0
 var accumulator := 0.0
 
@@ -26,6 +28,8 @@ func initialize(spawn: Vector3i) -> void:
 	logistics.mining = mining
 	woodcut.reset()
 	woodcut.logistics = logistics
+	dig.reset()
+	dig.mining = mining
 	colonists.clear()
 	elapsed = 0.0
 	accumulator = 0.0
@@ -36,9 +40,11 @@ func advance(delta: float) -> void:
 	mining.terrain = terrain
 	logistics.terrain = terrain
 	woodcut.terrain = terrain
+	dig.terrain = terrain
 	accumulator += maxf(0.0,delta)
 	var steps := 0
 	while accumulator >= STEP and steps < MAX_STEPS:
+		dig.schedule()
 		for colonist in colonists:
 			colonist.tick(STEP)
 			if terrain != null and colonist.health>0.0:

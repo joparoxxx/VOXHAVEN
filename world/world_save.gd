@@ -2,7 +2,7 @@ extends RefCounted
 const World = preload("res://world/voxel_world.gd")
 const VERSION := 1
 
-static func save(world: World, path: String, mining_jobs: Array = [], logistics_state: Dictionary = {}, woodcut_state: Dictionary = {}) -> bool:
+static func save(world: World, path: String, mining_jobs: Array = [], logistics_state: Dictionary = {}, woodcut_state: Dictionary = {}, dig_state: Dictionary = {}) -> bool:
 	var records: Array = []
 	for p in world.edits:
 		records.append([p.x,p.y,p.z,world.edits[p]])
@@ -12,7 +12,7 @@ static func save(world: World, path: String, mining_jobs: Array = [], logistics_
 			designations.append([p.x,p.y,p.z])
 	var file := FileAccess.open(path + ".tmp",FileAccess.WRITE)
 	if file == null: return false
-	file.store_string(JSON.stringify({"version":VERSION,"seed":world.world_seed,"edits":records,"mining_designations":designations,"logistics":logistics_state,"woodcut":woodcut_state}))
+	file.store_string(JSON.stringify({"version":VERSION,"seed":world.world_seed,"edits":records,"mining_designations":designations,"logistics":logistics_state,"woodcut":woodcut_state,"dig":dig_state}))
 	file.close()
 	return DirAccess.rename_absolute(path+".tmp",path) == OK
 
@@ -74,3 +74,12 @@ static func restore_woodcut(path: String) -> Dictionary:
 	if data is Dictionary and data.get("version") == VERSION and data.get("woodcut", {}) is Dictionary:
 		return data.get("woodcut", {})
 	return {}
+
+## Optional staged excavation plans (version 1 format, older worlds load as usual).
+static func restore_dig(path: String) -> Dictionary:
+ if not FileAccess.file_exists(path):
+  return {}
+ var data = JSON.parse_string(FileAccess.get_file_as_string(path))
+ if data is Dictionary and data.get("version") == VERSION and data.get("dig",{}) is Dictionary:
+  return data.get("dig",{})
+ return {}

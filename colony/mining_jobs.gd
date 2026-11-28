@@ -69,10 +69,10 @@ func reserve(c: Colonist) -> bool:
  for key in designations.keys():
   if inspected >= MAX_JOB_SCAN:
    break
-  inspected += 1
   var p: Vector3i = key
   if int(designations[p]) != 0:
    continue
+  inspected += 1
   if terrain.block_at(p) == World.Block.AIR:
    cancel(p)
    continue
@@ -81,7 +81,7 @@ func reserve(c: Colonist) -> bool:
   var found := false
   var shortest := 1000000
   for direction in ADJACENT:
-   for height_offset in [1, 0, -1]:
+   for height_offset in [2, 1, 0, -1]:
     var stand: Vector3i = p + direction + Vector3i.UP * height_offset
     if not Nav.standable(terrain, stand):
      continue
