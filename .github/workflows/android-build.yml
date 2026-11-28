@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   # Triggered only when the APK workflow itself changes.
   # Ordinary gameplay commits do not launch an APK export.
-  # QA export: Phase 4 woodcutting, visible stockpile and persistence (9c8c507).
+  # QA export: Select, Dig Depth, Chop Area, Inspect, Cancel and Pan (b925113).
   push:
     branches:
       - game/colony-foundation
