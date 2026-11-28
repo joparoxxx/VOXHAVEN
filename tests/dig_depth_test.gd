@@ -20,17 +20,35 @@ func _initialize() -> void:
  ok = ok and colony.dig.columns.size() == 4 and colony.mining.designations.size() == 4
  ok = ok and colony.dig.request_area(Vector3i(0,49,0),Vector3i(20,49,20),2) == 0
  ok = ok and colony.dig.request_area(Vector3i(2,49,2),Vector3i(2,49,2),9) == 0
- # Mimic a completed mining layer to verify jobs reveal the next layer.
+ # Higher blocks across the WHOLE excavation are cleared before any
+ # colonist gets an order to descend to the lower stratum.
  var top := Vector3i(2,49,2)
  ok = ok and colony.mining.designations.has(top)
  colony.mining.cancel(top)
  world.set_block(top,World.Block.AIR)
  colony.dig.schedule()
  var second := Vector3i(2,48,2)
+ ok = ok and not colony.mining.designations.has(second)
+ for x in range(2,4):
+  for z in range(2,4):
+   var p := Vector3i(x,49,z)
+   if p == top:
+    continue
+   colony.mining.cancel(p)
+   world.set_block(p,World.Block.AIR)
+ colony.dig.schedule()
  ok = ok and colony.mining.designations.has(second)
- ok = ok and not colony.mining.designations.has(Vector3i(2,47,2))
  colony.mining.cancel(second)
  world.set_block(second,World.Block.AIR)
+ colony.dig.schedule()
+ ok = ok and not colony.mining.designations.has(Vector3i(2,47,2))
+ for x in range(2,4):
+  for z in range(2,4):
+   var p := Vector3i(x,48,z)
+   if p == second:
+    continue
+   colony.mining.cancel(p)
+   world.set_block(p,World.Block.AIR)
  colony.dig.schedule()
  ok = ok and colony.mining.designations.has(Vector3i(2,47,2))
  # Planner must keep the request bounded and preserve lower tiers for later.
