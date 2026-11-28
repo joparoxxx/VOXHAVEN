@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   # Triggered only when the APK workflow itself changes.
   # Ordinary gameplay commits do not launch an APK export.
-  # QA export: 3D viewer Camera ON/OFF and mobile FPS optimizations (10cbd42).
+  # QA export: post-camera lag audit; original 16x16 streaming retained (ef36845).
   push:
     branches:
       - game/colony-foundation
