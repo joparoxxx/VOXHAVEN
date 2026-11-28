@@ -66,7 +66,7 @@ The `game/colony-foundation` branch contains all 107 Cube World GLTF files and b
 
 Godot import, scene smoke, animation runtime and APK output for these new commits are pending workflow validation; do not treat code inspection as a completed build.
 
-A first mining-job vertical slice now lets players designate solid blocks for colonists to mine. Work reservations, safe-adjacent stand positions, pending designation persistence and unhauled drops are in progress and require CI verification. Woodcutting, hauling and storage are not implemented.
+A first mining-job vertical slice now lets players designate solid blocks for colonists to mine. Work reservations, safe-adjacent stand positions, pending designation persistence and unhauled drops are in progress and require CI verification. The initial resource logistics system can now reserve unhauled mining drops, carry them to a virtual depot, and persist depot stock and remaining drops. This is a prototype pending automated validation, not a completed physical storage/warehouse or woodcutting system.
 
 ## Roadmap
 

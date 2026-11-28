@@ -19,3 +19,9 @@
 
 ## Autonomous agent continuity policy
 - Owner reiterated game/colony-foundation as the sole active development branch. The mandatory development skill has been installed here from the previous reference branch and updated for Phase 4 continuation. The separately scheduled hourly VOXHAVEN development task now targets game/colony-foundation and Phase 4.0–4.9, preserving its schedule.
+
+## 2026-11-28 Phase 4.3/4.4 logistics implementation — pending validation
+- Added `colony/resource_logistics.gd`: bounded hauling reservations from mining drops, pathfinding to available pickup/depot stand positions, carried state, depot inventory, recoverable dropped items on worker failure, and resource delivery signals. Gameplay and inventory state remain offline and independent of renderer.
+- Integrated logistics after mining in fixed-step colony simulation and UI; in-world status displays pending drops and stored units. Saves now optionally include pending drops, inventory, depot and recovery of carried items into stock while retaining world save format version 1 compatibility.
+- Added `tests/resource_logistics_test.gd` to the Godot CI workflow, covering mining→pickup→delivery, persisted stock and unhauled drops, and dropped inventory when a worker is released. CI is pending; no claim of successful Godot or Android runtime tests.
+- This first storage vertical slice has no visual warehouse building, physical pickup animation, crafting or construction, and does not finish Phase 4.4.

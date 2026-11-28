@@ -2,7 +2,7 @@ extends RefCounted
 const World = preload("res://world/voxel_world.gd")
 const VERSION := 1
 
-static func save(world: World, path: String, mining_jobs: Array = []) -> bool:
+static func save(world: World, path: String, mining_jobs: Array = [], logistics_state: Dictionary = {}) -> bool:
 	var records: Array = []
 	for p in world.edits:
 		records.append([p.x,p.y,p.z,world.edits[p]])
@@ -12,7 +12,7 @@ static func save(world: World, path: String, mining_jobs: Array = []) -> bool:
 			designations.append([p.x,p.y,p.z])
 	var file := FileAccess.open(path + ".tmp",FileAccess.WRITE)
 	if file == null: return false
-	file.store_string(JSON.stringify({"version":VERSION,"seed":world.world_seed,"edits":records,"mining_designations":designations}))
+	file.store_string(JSON.stringify({"version":VERSION,"seed":world.world_seed,"edits":records,"mining_designations":designations,"logistics":logistics_state}))
 	file.close()
 	return DirAccess.rename_absolute(path+".tmp",path) == OK
 
@@ -56,3 +56,12 @@ static func restore_mining_jobs(path: String) -> Array[Vector3i]:
 		if p.y >= 0 and p.y < World.HEIGHT and not result.has(p):
 			result.append(p)
 	return result
+
+## Older world files omit this optional resource state.
+static func restore_logistics(path: String) -> Dictionary:
+	if not FileAccess.file_exists(path):
+		return {}
+	var data = JSON.parse_string(FileAccess.get_file_as_string(path))
+	if data is Dictionary and data.get("version") == VERSION and data.get("logistics", {}) is Dictionary:
+		return data.get("logistics", {})
+	return {}

@@ -71,8 +71,10 @@ func _ready() -> void:
 	spawn_colony(spawn)
 	colony.mining.terrain = world
 	colony.mining.mined.connect(_on_block_mined)
+	colony.logistics.delivered.connect(_on_resources_delivered)
 	if not "--world-smoke" in OS.get_cmdline_user_args():
 		colony.mining.restore_jobs(Save.restore_mining_jobs(SAVE_PATH))
+		colony.logistics.restore(Save.restore_logistics(SAVE_PATH))
 		for p in colony.mining.designations:
 			show_mining_marker(p)
 	var layer := CanvasLayer.new()
@@ -133,14 +135,14 @@ func test_control(action: String) -> void:
 
 func update_info() -> void:
 	if info == null: return
-	info.text = "FPS: %d | Chunks: %d | Colony time: %ds | Mining jobs: %d | Drops: %d" % [Engine.get_frames_per_second(),chunks.size(),int(colony.elapsed),colony.mining.designations.size(),colony.mining.drops.size()]
+	info.text = "FPS: %d | Chunks: %d | Colony time: %ds | Mining jobs: %d | Drops: %d | Stock: %d" % [Engine.get_frames_per_second(),chunks.size(),int(colony.elapsed),colony.mining.designations.size(),colony.logistics.unhauled_units(),colony.logistics.stored_units()]
 	if selected_index >= 0 and selected_index < colony.colonists.size():
 		var c = colony.colonists[selected_index]
 		info.text += "\n%s | %s | HP %d | Hunger %d | Thirst %d | Stamina %d | Mood %d" % [c.display_name,c.activity,int(c.health),int(c.hunger),int(c.thirst),int(c.stamina),int(c.happiness)]
 
 func select_action(action: String) -> void:
 	if action == "Save":
-		status.text = "Saved" if Save.save(world,SAVE_PATH,colony.mining.jobs_snapshot()) else "Save failed"
+		status.text = "Saved" if Save.save(world,SAVE_PATH,colony.mining.jobs_snapshot(),colony.logistics.snapshot()) else "Save failed"
 	else:
 		place_mode = action == "Place"
 		status.text = "Place: tap a surface" if place_mode else "Mine: tap a block to designate mining"
@@ -194,6 +196,10 @@ func _on_block_mined(p: Vector3i, _block: int) -> void:
 	if status != null:
 		status.text = "Colonist mined %s" % str(p)
 
+func _on_resources_delivered(block: int, amount: int) -> void:
+	if status != null:
+		status.text = "Stored %d units of block %d" % [amount, block]
+
 func step_zoom(direction: int) -> void:
 	set_zoom(zoom * pow(1.2,direction))
 
@@ -233,7 +239,7 @@ func _process(_delta: float) -> void:
 		autosave_elapsed += _delta
 		if autosave_elapsed >= 60.0:
 			autosave_elapsed = 0.0
-			if not Save.save(world,SAVE_PATH,colony.mining.jobs_snapshot()): status.text = "Autosave failed"
+			if not Save.save(world,SAVE_PATH,colony.mining.jobs_snapshot(),colony.logistics.snapshot()): status.text = "Autosave failed"
 	for colonist in colony.colonists:
 		if colonist_views.has(colonist.id):
 			var view = colonist_views[colonist.id]
