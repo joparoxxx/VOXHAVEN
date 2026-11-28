@@ -16,3 +16,6 @@
 - Integrated jobs into colony fixed-step simulator and world_view: mining targets are highlighted, tapped again to cancel, completed jobs trigger chunk remeshing via a simulation signal.
 - World save version 1 remains backward-compatible; optional mining_designations records persist queued work, restored on game load. Added tests/mining_jobs_test.gd and validation workflow step.
 - Scope: this is a first autonomous mining vertical slice, not woodcutting, hauling, physical resource entities, or construction. No Godot runtime/Android build success claim until CI verifies the commit. Previously-running CI for 8e4de7d does not validate these changes.
+
+## Autonomous agent continuity policy
+- Owner reiterated game/colony-foundation as the sole active development branch. The mandatory development skill has been installed here from the previous reference branch and updated for Phase 4 continuation. The separately scheduled hourly VOXHAVEN development task now targets game/colony-foundation and Phase 4.0–4.9, preserving its schedule.
