@@ -74,16 +74,23 @@ func schedule() -> void:
   if not mining.designations.has(p):
    active.erase(key)
    owned.erase(p)
- # Bounded active jobs avoid flooding the original mining reservation system.
+ # Level the selection progressively: finish shallower layer jobs across
+ # the whole area before opening deeper tiers. Without this sort, the first
+ # few columns would monopolize the 12-slot queue and starve other surfaces.
+ var waiting: Array[Dictionary] = []
  for key in columns.keys():
-  if active.size() >= MAX_ACTIVE:
-   break
   var next := _next_solid(key)
   if next.y < 0:
    columns.erase(key)
-   continue
-  if active.has(key):
-   continue
+  elif not active.has(key):
+   var limits: Dictionary = columns[key]
+   waiting.append({"key":key,"next":next,"tier":int(limits["top"])-next.y})
+ waiting.sort_custom(func(a: Dictionary,b: Dictionary) -> bool: return int(a["tier"]) < int(b["tier"]))
+ for entry in waiting:
+  if active.size() >= MAX_ACTIVE:
+   break
+  var key: Vector2i = entry["key"]
+  var next: Vector3i = entry["next"]
   if mining.designations.has(next):
    # Existing manual mining remains owned by the player.
    active[key] = next

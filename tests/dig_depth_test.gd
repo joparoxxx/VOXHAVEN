@@ -33,6 +33,8 @@ func _initialize() -> void:
  world.set_block(second,World.Block.AIR)
  colony.dig.schedule()
  ok = ok and colony.mining.designations.has(Vector3i(2,47,2))
+ # Planner must keep the request bounded and preserve lower tiers for later.
+ ok = ok and colony.dig.active.size() <= colony.dig.MAX_ACTIVE
  var path := "user://voxhaven-depth-test.json"
  ok = ok and Save.save(world,path,colony.mining.jobs_snapshot(),{}, {},colony.dig.snapshot())
  var restored := Save.restore(path)
