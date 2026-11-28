@@ -81,14 +81,13 @@ func schedule() -> void:
   if not mining.designations.has(p):
    active.erase(key)
    owned.erase(p)
- # Level the selection progressively: finish shallower layer jobs across
- # the whole area before opening deeper tiers. Without this sort, the first
- # few columns would monopolize the 12-slot queue and starve other surfaces.
- var waiting: Array[Dictionary] = []
+ # Strict upper-layer barrier across the entire selected area:
+ # do not issue deeper mining jobs while any shallow block remains.
+ var pending: Array[Dictionary] = []
+ var shallowest := MAX_DEPTH
  for key in columns.keys():
   var next := _next_solid(key)
   if next.y < 0 or mining.is_tree_base(next):
-   # An uncut tree never gets a block-mining designation.
    if active.has(key):
     var job: Vector3i = active[key]
     if owned.has(job):
@@ -96,17 +95,32 @@ func schedule() -> void:
      owned.erase(job)
     active.erase(key)
    columns.erase(key)
-  elif not active.has(key):
-   var limits: Dictionary = columns[key]
-   waiting.append({"key":key,"next":next,"tier":int(limits["top"])-next.y})
- waiting.sort_custom(func(a: Dictionary,b: Dictionary) -> bool: return int(a["tier"]) < int(b["tier"]))
- for entry in waiting:
+   continue
+  var limits: Dictionary = columns[key]
+  var tier := int(limits["top"]) - next.y
+  shallowest = mini(shallowest,tier)
+  pending.append({"key":key,"next":next,"tier":tier})
+ # Cancel planner-owned deeper reservations if the upper layer still exists.
+ for key in active.keys():
+  if not columns.has(key):
+   active.erase(key)
+   continue
+  var target: Vector3i = active[key]
+  var limits: Dictionary = columns[key]
+  if int(limits["top"])-target.y > shallowest and owned.has(target):
+   mining.cancel(target)
+   owned.erase(target)
+   active.erase(key)
+ for entry in pending:
   if active.size() >= MAX_ACTIVE:
    break
+  if int(entry["tier"]) != shallowest:
+   continue
   var key: Vector2i = entry["key"]
   var next: Vector3i = entry["next"]
+  if active.has(key):
+   continue
   if mining.designations.has(next):
-   # Existing manual mining remains owned by the player.
    active[key] = next
    continue
   if mining.designate(next):
