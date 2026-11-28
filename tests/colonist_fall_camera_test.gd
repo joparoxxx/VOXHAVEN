@@ -46,12 +46,14 @@ func _initialize() -> void:
 	ok = _check(c.position == landed and c.activity != "Blocked", "worker remains grounded and navigable after next step", failures) and ok
 	# The worker is now idle on stable terrain; repeated physics ticks must
 	# not resample procedural ground just to rediscover the same support.
+	colony.set_role(c.id,"Miner")
 	var checks_before_idle := colony.gravity_probe_count
 	for idle in range(12):
 		colony.advance(Colony.STEP)
 	ok = _check(colony.gravity_probe_count == checks_before_idle, "idle gravity support checks stay cached", failures) and ok
 	# Any ground edit invalidates the cache; a second removed floor drops again.
-	world.set_block(Vector3i(0,27,0),World.Block.AIR)
+	for y in range(24,28):
+		world.set_block(Vector3i(0,y,0),World.Block.AIR)
 	world.set_block(Vector3i(0,24,0),World.Block.STONE)
 	colony.advance(Colony.STEP)
 	ok = _check(c.position == Vector3i(0,25,0), "terrain edit invalidates gravity cache and triggers a second fall", failures) and ok
