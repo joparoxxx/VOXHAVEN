@@ -7,9 +7,9 @@
 - Verified the `game/colony-foundation` Git tree already contains 107 Quaternius Cube World GLTF models and `Atlas.png` / `Blocks_PixelArt.png`. This is the complete original Cube World asset pack subset in this branch.
 - Commit `81fd63e9d7d5564dabb9262e503cf6ce3f93b91d`: render four existing Cube World colonist variants rather than a single character. The GLTF files embed `Idle` and `Walk` clips (source JSON inspection).
 - Commit `29e72e6d73b4a389a10d53fcdafd273a20bce54c`: procedural terrain lookup and runtime material use Cube World Pixel Blocks and `Blocks_PixelArt.png`; reuses tinted pixels for missing sand/deep-stone/mineral tiles; strengthens atlas source file test.
-- Pending CI validation: model imports, atlas face UVs, scene smoke, animation playback and Android package export. Godot 4.5.1 binary is not installed in assistant's current working container; workflows have not yet been observed passing on these new commits.
-- Current roadmap: Phase 4.0 asset integration in progress. Phase 4.1 block designation and Phase 4.2 autonomous mining are NOT implemented on this branch; do not imply other branches' gameplay code was merged.
-- Continue on this branch, inspect Godot validation logs and repair failing import/UV/animation code before starting mining. Verify actual APK artifact and physical-device performance separately.
+- At the initial asset integration checkpoint, validation was pending. Later Godot and Android CI runs passed; see the verified November 28 checkpoint at the end of this file.
+- Historical baseline before Phase 4 job features. Block designation, autonomous mining, woodcutting and hauling were subsequently implemented on this same branch; see later checkpoints.
+- Historical integration note: later test runs verified these features. Continue on the owner-designated branch and verify physical Android behavior separately.
 
 ## 2026-11-28 Phase 4.1/4.2 implementation (pending CI)
 - Branch: game/colony-foundation. New colony/mining_jobs.gd: solid-block mining designations, exclusive colonist reservations, bounded path-to-adjacent-work-cell selection, cancellation, completion, basic unhauled drops.
@@ -51,3 +51,9 @@
 - Added physically visible `world/stockpile_view.gd` with original Cube World crate and highlighted ground pad; new Stockpile mode places/relocates the depot on reachable walkable ground and displays aggregate stock/wood. Existing hauling routes now deliver to the stockpile location, and stored resources survive relocation. This is a single stockpile prototype, not a constructed warehouse or multi-zone logistics system.
 - Retained backwards-compatible world-save version 1: optional woodcut harvesting/designations and existing logistics depot/inventory (including wood item) persist. Existing saves without the new section still load.
 - Added deterministic end-to-end woodcut/hauling/relocation/persistence test plus visual stockpile scene test, updated terrain decoration regression and CI workflow. PENDING CI: do not claim feature validated or APK built until new commit runs pass. Check physical device tap targeting and actual movement separately.
+
+## 2026-11-28 verified Phase 4.2 + 4.4 implementation
+- **GitHub branch:** `game/colony-foundation`; no merge to `main`. The final source/test commit `3215bccda3793ab53344943c711e94e42bdf9838` passed Godot validation: https://github.com/joparoxxx/VOXHAVEN/actions/runs/46147714951
+- CI **PASS**: full asset import, terrain decoration and UV tests, Cube World character import/animation checks, colony simulation, navigation, continuous movement, mining, resource logistics, deterministic woodcut→wood drop→haul→stockpile round trip, persisted felled trees/designations, relocated stockpile, and stockpile display test. World rendering smoke test also **PASS**.
+- Android debug APK export, archive integrity, signing and package verification **PASS** in https://github.com/joparoxxx/VOXHAVEN/actions/runs/46147531755 at `4ec5f069d0e3f08bcf790ab22ac6e54fd50199ec`. Later change `3215bcc` only corrected a headless test lifecycle issue, not runtime gameplay. The artifact is `voxhaven-android-debug`.
+- Remaining limitations: physical-device install, touch designation and forest selection usability, smooth work/haul animation, stockpile label visibility, actual framerate/memory and old-save compatibility on a device are NOT YET VERIFIED. Stockpile is a single relocatable marked storage area, not a constructed warehouse or capacity-limited logistics network. Phase 4.5 construction is still pending.
