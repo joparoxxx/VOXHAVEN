@@ -577,12 +577,18 @@ func _unhandled_input(event: InputEvent) -> void:
 				touch_start = event.position
 				touch_dragged = false
 				multi_touch = false
+				select_drag_active = false
 			touch_points[event.index] = event.position
 			if touch_points.size() > 1: multi_touch = true
 		elif touch_points.has(event.index):
 			touch_points.erase(event.index)
-			if touch_points.is_empty() and not multi_touch and not touch_dragged and not event.canceled:
-				pick_block(event.position)
+			if touch_points.is_empty() and not multi_touch and not event.canceled:
+				if action_mode == "Select" and touch_dragged and select_drag_active:
+					selection_stage = 2
+					status.text = "Selected: %d columns | Dig depth %d" % [selection_count(),dig_depth]
+				elif not touch_dragged:
+					pick_block(event.position)
+			select_drag_active = false
 		return
 	if event is InputEventScreenDrag:
 		if not touch_points.has(event.index): return
@@ -596,18 +602,49 @@ func _unhandled_input(event: InputEvent) -> void:
 			if old_distance > 8.0 and new_distance > 8.0:
 				set_zoom(zoom * old_distance / new_distance)
 		elif touch_points.size() == 1 and not multi_touch:
-			if event.position.distance_to(touch_start) > 12: touch_dragged = true
-			if touch_dragged: pan_camera(event.relative)
+			if event.position.distance_to(touch_start) > 12:
+				touch_dragged = true
+			if touch_dragged and action_mode == "Select":
+				if not select_drag_active:
+					var first_hit := _ray_hit(touch_start)
+					if not first_hit.is_empty():
+						var n: Vector3 = first_hit["normal"]
+						if n.y > 0.8:
+							var location: Vector3 = first_hit["position"]
+							selection_first = Vector3i((location-n*0.01).floor())
+							selection_last = selection_first
+							selection_stage = 1
+							select_drag_active = true
+				if select_drag_active:
+					var next_hit := _ray_hit(event.position)
+					if not next_hit.is_empty():
+						var n: Vector3 = next_hit["normal"]
+						if n.y > 0.8:
+							var location: Vector3 = next_hit["position"]
+							selection_last = Vector3i((location-n*0.01).floor())
+							update_selection_preview()
+			elif touch_dragged:
+				pan_camera(event.relative)
 		touch_points[event.index] = event.position
 		return
 	if event is InputEventMagnifyGesture:
 		if touch_points.is_empty(): set_zoom(zoom/maxf(event.factor,0.01))
 	elif event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_RIGHT: pick_block(event.position)
+		elif event.button_index == MOUSE_BUTTON_LEFT and action_mode == "Select": pick_block(event.position)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_UP: step_zoom(-1)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN: step_zoom(1)
 	elif event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and touch_points.is_empty():
-		pan_camera(event.relative)
+		if action_mode == "Select" and selection_stage > 0:
+			var hit := _ray_hit(event.position)
+			if not hit.is_empty():
+				var n: Vector3 = hit["normal"]
+				if n.y > 0.8:
+					var location: Vector3 = hit["position"]
+					selection_last = Vector3i((location-n*0.01).floor())
+					update_selection_preview()
+		else:
+			pan_camera(event.relative)
 
 func spawn_colony(spawn: Vector3i) -> void:
 	colony.initialize(spawn+Vector3i.UP)
