@@ -46,3 +46,8 @@ Next exact task: inspect current development HEAD, terrain registry, atlas mappi
 - Commit 3fb23afa90e55875f1ea23965d873ba4013d7fee filters recursively discovered Cube World character files by character/colonist/human filename and validates each chosen PackedScene instantiates to Node3D; invalid selected Cube World scenes trigger legacy fallback attempts.
 - This is defensive integration, not verified Cube World character replacement. Current active terrain atlas still uses KayKit BlockBits.
 - Godot import, runtime and Android APK tests: NOT RUN. Do not mark Phase 4.0 complete.
+
+## 2026-11-28 Phase 4.0 — environment loading guard
+- Commit 77067764a19580ac1ffa328a280504c22abc4e12 changes Cube World tree decoration from unconditional GLTF preloads to checked runtime scene loads. Missing/unimportable trees are skipped rather than breaking script initialization.
+- Confirmed three Tree_*.gltf repository paths exist. Tested candidate Cube World texture paths Textures/Texture.png and Textures/Atlas.png were not found; these guesses must not be used as replacement textures.
+- Phase 4.0 NOT COMPLETE: Cube World character paths/texture atlas still require discovery and verification. Godot import, runtime, Android build NOT RUN.
