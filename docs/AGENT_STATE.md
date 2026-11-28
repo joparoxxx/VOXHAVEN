@@ -79,3 +79,8 @@
 - `world/world_view.gd`: removed fixed Rotate L/Rotate R camera menu; new Follow ON/OFF switch with one-finger orbit/yaw/pitch and selected-colonist tracking while on; tap follows colonist/terrain; while off single drag pans. Both modes allow two-finger pan and pinch zoom. Desktop mouse supports right-drag orbit and wheel zoom. Reset Camera moved into Tools menu. Added `world/camera_rig.gd` for bounded orbital math.
 - Regression tests: `tests/dig_depth_test.gd` now requires all upper-layer blocks cleared before lower layers; new `tests/colonist_fall_camera_test.gd` checks void drop, visual interpolation, route invalidation and camera clamps. CI workflow includes both. Approved models/terrain textures remain untouched.
 - CI + Android APK on this exact commit pending. Do not merge to main.
+
+## 2026-11-28 3D-object-viewer camera and mobile frame budget
+- Removed automatic colonist follow and the Follow button. The one toggle now says Camera ON/OFF; ON gives one-finger orbit, tap-to-set fixed pivot, pinch zoom and two-finger pan. OFF is normal command selection and free panning. All camera motion is user-driven, and the mine/select controls remain available with camera OFF.
+- Performance investigation: `world_view.gd` loaded as many as 81 chunks at 4-chunk radius on widescreen mobile and rebuilt HUD strings each frame. Capped mobile at 2-chunk radius (25 chunks), desktop at 3 (49), throttled info to 0.25 seconds, and removed all per-frame follow/camera/chunk calls.
+- Fixed `tests/colonist_fall_camera_test.gd` parse error (Variant from `set_block` was used as a bool); CI had failed importing that test. Actual runtime FPS and visual/camera input quality are still unverified on Android.

@@ -109,13 +109,14 @@ These are commands to **run**, not claims that the latest commit has passed them
 The UI and multitouch input are prototypes; physical Android device testing remains outstanding.
 
 
-### Mining order, falling workers and full camera control
+### Mining order, falling workers and 3D-viewer camera
 
-- **Strict top-down excavation** — the planner processes the highest remaining exposed blocks across a selected excavation before queuing any lower block. The 12-job active limit remains; deep mining waits while any upper layer is unfinished.
-- **Support-aware colonists** — whenever terrain below a living worker is mined away, the simulation finds the next lower solid-supported floor. It releases invalid reservations, re-paths on subsequent ticks and animates the fall instead of leaving the character suspended.
-- **Camera Follow switch:** `Follow OFF` allows single-finger free panning. Switch **ON** to orbit with one finger (horizontal yaw, vertical pitch) and track the selected colonist. Tapping another colonist switches the tracked worker; tapping terrain smoothly moves the orbit focus to that location, while the active gameplay tool can still designate work.
-- **Both modes:** two-finger pan and pinch zoom; desktop right-drag orbit, left-drag pan or select, mouse wheel zoom. **Tools → Reset Camera** restores the initial angle and position; the old Rotate L / Rotate R buttons are removed. Pitch/zoom are bounded to prevent flipped or lost camera views.
-- Passing automated tests for these changes are required before calling them validated. Android touch gestures, physics impressions and framerate still need real-device review.
+- **Strict top-down mining:** the planner queues the highest remaining terrain first.
+- **Gravity:** workers fall to a supported block if their floor disappears, with interpolated movement and a fresh path.
+- **Camera ON:** a 3D-object-viewer style camera. One-finger drag orbits (yaw/pitch), a tap sets the fixed orbit pivot, two-finger drag pans and pinch zooms. There is **no automatic follow** of a colonist.
+- **Camera OFF:** gameplay tap commands and Select gestures are active; dragging pans the camera when not selecting.
+- Desktop: right-drag orbit, left-drag pan or select, mouse wheel zoom. Reset via Tools → Reset Camera.
+- **Mobile FPS budget:** up to a 5×5 chunk window instead of 9×9, no continuous camera/chunk checks while idle, and HUD refresh at 4 Hz rather than every frame. This reduces work; measured phone FPS still requires a real-device check.
 
 ## Compact tools and single Mine workflow
 

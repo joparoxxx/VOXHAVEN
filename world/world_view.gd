@@ -18,7 +18,9 @@ var colonist_views: Dictionary = {}
 var atlas: Dictionary = {}
 const SAVE_PATH := "user://world.json"
 const MIN_RADIUS := 2
-const MAX_RADIUS := 4
+const MAX_RADIUS := 3
+const MOBILE_RADIUS := 2
+const HUD_UPDATE_INTERVAL := 0.25
 const UNLOAD_BUFFER := 1
 var render_radius := MIN_RADIUS
 var worker := Thread.new()
@@ -45,11 +47,8 @@ var camera: Camera3D
 var material := ShaderMaterial.new()
 var yaw := 0.7
 var pitch := 0.785398
-var camera_follow := false
+var camera_control_enabled := false
 var camera_switch: Button
-var follow_worker_id := -1
-var follow_anchor := Vector3(8,28,8)
-var follow_offset := Vector3.ZERO
 var home_focus := Vector3.ZERO
 var simulation_speed := 1.0
 var selected_index := 0
@@ -58,6 +57,7 @@ var job_menu: MenuButton
 var info: Label
 var speed_button: Button
 var autosave_elapsed := 0.0
+var hud_elapsed := 0.0
 const MIN_ZOOM := 8.0
 const MAX_ZOOM := 65.0
 var zoom := 32.0
@@ -70,7 +70,6 @@ func _ready() -> void:
 	var spawn := world.find_spawn()
 	focus = Vector3(spawn)+Vector3(0.5,1.0,0.5)
 	home_focus = focus
-	follow_anchor = focus
 	atlas = Atlas.build_lookup()
 	# Keep the user's Cube World pixel texture, but soften high-frequency detail
 	# and mute strong greens/browns without changing source assets or block data.
@@ -163,11 +162,11 @@ func _ready() -> void:
 	# One switch replaces fixed 45-degree rotate buttons; touch gestures
 	# always provide full orbital rotation, pitch, pan and pinch zoom.
 	camera_switch = Button.new()
-	camera_switch.text = "Follow OFF"
+	camera_switch.text = "Camera OFF"
 	camera_switch.toggle_mode = true
 	camera_switch.custom_minimum_size = Vector2(106,44)
 	main_bar.add_child(camera_switch)
-	camera_switch.toggled.connect(_on_camera_follow_toggled)
+	camera_switch.toggled.connect(_on_camera_control_toggled)
 	var save_button := Button.new()
 	save_button.text = "Save"
 	save_button.custom_minimum_size = Vector2(65,44)
@@ -216,30 +215,24 @@ func _on_tool_selected(index: int) -> void:
 	else:
 		select_action(TOOL_OPTIONS[index])
 
-func _on_camera_follow_toggled(enabled: bool) -> void:
-	camera_follow = enabled
+func _on_camera_control_toggled(enabled: bool) -> void:
+	# Camera ON behaves like a 3D object viewer: orbit around a fixed pivot.
+	# No automatic follow or camera motion while the user is idle.
+	camera_control_enabled = enabled
 	if camera_switch != null:
-		camera_switch.text = "Follow ON" if enabled else "Follow OFF"
-	follow_offset = Vector3.ZERO
-	follow_worker_id = -1
-	if enabled and selected_index >= 0 and selected_index < colony.colonists.size():
-		var worker = colony.colonists[selected_index]
-		follow_worker_id = worker.id
-		follow_anchor = Vector3(worker.position)+Vector3(0.5,0.8,0.5)
+		camera_switch.text = "Camera ON" if enabled else "Camera OFF"
 	if status != null:
-		status.text = "Follow ON: drag to orbit, tap target, pinch to zoom" if enabled else "Free: drag pan, two fingers pan/zoom; Follow ON enables orbit"
+		status.text = "Camera ON: drag orbit, tap to set pivot, pinch zoom, two-finger pan" if enabled else "Camera OFF: use Mine/Select tools, drag to pan"
 
 func reset_camera() -> void:
-	camera_follow = false
-	follow_worker_id = -1
-	follow_offset = Vector3.ZERO
+	camera_control_enabled = false
 	focus = home_focus
 	yaw = 0.7
 	pitch = 0.785398
 	zoom = 32.0
 	if camera_switch != null:
 		camera_switch.set_pressed_no_signal(false)
-		camera_switch.text = "Follow OFF"
+		camera_switch.text = "Camera OFF"
 	update_camera()
 	refresh_chunks()
 
@@ -258,8 +251,6 @@ func _refresh_worker_buttons() -> void:
 		worker_button.text = "Worker %d" % (selected_index+1)
 	if job_menu != null:
 		job_menu.text = colony.colonists[selected_index].job_role
-	if camera_follow:
-		follow_worker_id = colony.colonists[selected_index].id
 
 func test_control(action: String) -> void:
 	match action:
@@ -268,16 +259,9 @@ func test_control(action: String) -> void:
 			if not colony.colonists.is_empty():
 				selected_index = (selected_index+1)%colony.colonists.size()
 				_refresh_worker_buttons()
-		"Focus":
-			if selected_index >= 0 and selected_index < colony.colonists.size():
-				follow_worker_id = colony.colonists[selected_index].id
-				follow_anchor = Vector3(colony.colonists[selected_index].position)+Vector3(0.5,0.8,0.5)
-				focus = follow_anchor
 		"1x":
 			simulation_speed = fmod(simulation_speed+1.0,4.0)
 			speed_button.text = "Pause" if simulation_speed == 0.0 else "%dx" % int(simulation_speed)
-	update_camera()
-	refresh_chunks()
 
 func update_info() -> void:
 	if info == null: return
@@ -553,7 +537,8 @@ func update_camera() -> void:
 func refresh_chunks() -> void:
 	var next := world.chunk_of(Vector3i(focus.floor()))
 	var viewport_size := get_viewport().get_visible_rect().size
-	var desired := clampi(ceili(zoom * maxf(1.0,viewport_size.x/maxf(1.0,viewport_size.y)) / 32.0)+1,MIN_RADIUS,MAX_RADIUS)
+	var device_radius := MOBILE_RADIUS if OS.has_feature("mobile") else MAX_RADIUS
+	var desired := clampi(ceili(zoom * maxf(1.0,viewport_size.x/maxf(1.0,viewport_size.y)) / 32.0)+1,MIN_RADIUS,device_radius)
 	if "--world-smoke" in OS.get_cmdline_user_args(): desired = MIN_RADIUS
 	if next == center_chunk and desired == render_radius: return
 	center_chunk = next
@@ -571,16 +556,10 @@ func refresh_chunks() -> void:
 
 func _process(_delta: float) -> void:
 	if simulation_speed > 0.0: colony.advance(_delta*simulation_speed)
-	if camera_follow:
-		if follow_worker_id > 0:
-			for c in colony.colonists:
-				if c.id == follow_worker_id and c.health > 0.0:
-					follow_anchor = Vector3(c.position)+Vector3(0.5,0.8,0.5)
-					break
-		focus = focus.lerp(follow_anchor+follow_offset,clampf(_delta*7.0,0.0,1.0))
-		update_camera()
-		refresh_chunks()
-	update_info()
+	hud_elapsed += _delta
+	if hud_elapsed >= HUD_UPDATE_INTERVAL:
+		hud_elapsed = 0.0
+		update_info()
 	if not "--world-smoke" in OS.get_cmdline_user_args():
 		autosave_elapsed += _delta
 		if autosave_elapsed >= 60.0:
@@ -652,11 +631,7 @@ var mouse_dragged := false
 
 func pan_camera(movement: Vector2) -> void:
 	var height := get_viewport().get_visible_rect().size.y
-	var motion := CameraRig.pan_delta(movement,yaw,zoom,height)
-	if camera_follow:
-		follow_offset += motion
-	else:
-		focus += motion
+	focus += CameraRig.pan_delta(movement,yaw,zoom,height)
 	update_camera()
 	refresh_chunks()
 
@@ -667,31 +642,16 @@ func orbit_camera(movement: Vector2) -> void:
 	update_camera()
 
 func _tap_world(screen: Vector2) -> void:
-	if camera_follow:
-		_focus_on_tap(screen)
-	if action_mode != "Pan":
-		pick_block(screen)
-
-func _focus_on_tap(screen: Vector2) -> void:
-	# A tapped worker becomes a moving follow target; a terrain tap becomes
-	# a static orbit pivot. The Mine/Select command still runs independently.
-	var closest := 55.0
-	follow_worker_id = -1
-	for worker_id in colonist_views:
-		var view: Node3D = colonist_views[worker_id]
-		if not view.visible:
-			continue
-		var projected := camera.unproject_position(view.global_position+Vector3(0,1,0))
-		var distance := projected.distance_to(screen)
-		if distance < closest:
-			closest = distance
-			follow_worker_id = int(worker_id)
-			follow_anchor = view.global_position+Vector3(0,0.8,0)
-	if follow_worker_id < 0:
+	if camera_control_enabled:
 		var hit := _ray_hit(screen)
 		if not hit.is_empty():
-			follow_anchor = Vector3(hit["position"])+Vector3(0,0.5,0)
-	follow_offset = Vector3.ZERO
+			# Object-viewer pivot: tap the surface to orbit around it.
+			focus = Vector3(hit["position"])+Vector3(0,0.5,0)
+			update_camera()
+			refresh_chunks()
+		return
+	if action_mode != "Pan":
+		pick_block(screen)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
@@ -733,7 +693,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif touch_points.size() == 1 and not multi_touch:
 			if event.position.distance_to(touch_start) > 12.0:
 				touch_dragged = true
-			if touch_dragged and action_mode == "Select":
+			if touch_dragged and action_mode == "Select" and not camera_control_enabled:
 				if not select_drag_active:
 					var first_hit := _ray_hit(touch_start)
 					if not first_hit.is_empty():
@@ -752,7 +712,7 @@ func _unhandled_input(event: InputEvent) -> void:
 							var location: Vector3 = hit["position"]
 							selection_last = Vector3i((location-n*0.01).floor())
 							update_selection_preview()
-			elif touch_dragged and camera_follow:
+			elif touch_dragged and camera_control_enabled:
 				orbit_camera(event.relative)
 			elif touch_dragged:
 				pan_camera(event.relative)
@@ -778,7 +738,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif (event.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
 			if event.position.distance_to(mouse_start) > 8.0:
 				mouse_dragged = true
-			if mouse_dragged and action_mode == "Select" and selection_stage > 0:
+			if mouse_dragged and action_mode == "Select" and selection_stage > 0 and not camera_control_enabled:
 				var hit := _ray_hit(event.position)
 				if not hit.is_empty():
 					var n: Vector3 = hit["normal"]
@@ -786,7 +746,7 @@ func _unhandled_input(event: InputEvent) -> void:
 						var location: Vector3 = hit["position"]
 						selection_last = Vector3i((location-n*0.01).floor())
 						update_selection_preview()
-			elif mouse_dragged and camera_follow:
+			elif mouse_dragged and camera_control_enabled:
 				orbit_camera(event.relative)
 			elif mouse_dragged:
 				pan_camera(event.relative)

@@ -27,8 +27,8 @@ func _initialize() -> void:
 	var visual := View.new()
 	get_root().add_child(visual)
 	visual.setup(c)
-	var ok := c.position == original
-	ok = ok and world.set_block(Vector3i(0,30,0),World.Block.AIR)
+	var ok: bool = c.position == original
+	world.set_block(Vector3i(0,30,0),World.Block.AIR)
 	colony.advance(Colony.STEP)
 	var landed := Vector3i(0,28,0)
 	ok = ok and c.position == landed
