@@ -1,6 +1,16 @@
 name: Godot validation
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - game/colony-foundation
+    paths:
+      - 'world/**'
+      - 'colony/**'
+      - 'tests/**'
+      - 'assets/**'
+      - 'project.godot'
+      - '.github/workflows/godot-validation.yml'
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -84,6 +94,11 @@ jobs:
           set -o pipefail
           timeout 180 xvfb-run -a godot --display-driver x11 --rendering-method gl_compatibility --audio-driver Dummy --path . --script res://tests/terrain_atlas_test.gd 2>&1 | tee atlas.log
           if grep -E 'SCRIPT ERROR:|ERROR:' atlas.log; then exit 1; fi
+      - name: Cube World character model and animation validation
+        run: |
+          set -o pipefail
+          timeout 180 godot --headless --path . --script res://tests/colonist_models_test.gd 2>&1 | tee colonist_models.log
+          if grep -E 'SCRIPT ERROR:|ERROR:' colonist_models.log; then exit 1; fi
       - name: Colony simulation and AI tests
         run: |
           set -o pipefail

@@ -38,11 +38,11 @@ No cloud AI, Gemini, external LLM, API key or mandatory network connection is re
 
 | Milestone | Status |
 | --- | --- |
-| Asset library | 1,076 GLB/glTF files across 14 packs uploaded |
-| Clean Godot project and asset registry | Implemented on development branch; validation pending |
+| Asset library | 1,076 GLB/glTF files across 14 packs uploaded; Cube World subset includes 107 GLTF models and two atlases |
+| Clean Godot project and asset registry | Implemented on game/colony-foundation; validation pending |
 | Asset lab and smoke tests | Implemented; validation pending |
 | Android export preset | Configured; APK build unverified |
-| Procedural world and colony simulation | Planned |
+| Procedural world and colony simulation | Prototype implemented on game/colony-foundation; runtime validation pending |
 | Gameplay and device profiling | Pending |
 
 The asset count includes animation files and does not represent unique meshes. See the [asset catalog](assets/ASSET_CATALOG.txt) and [credits](assets/CREDITS.md) for inventory and attribution. Preserve bundled third-party licenses; the asset licenses do not establish a license for the entire game.
@@ -56,9 +56,15 @@ git clone --branch game/colony-foundation https://github.com/joparoxxx/VOXHAVEN.
 cd VOXHAVEN
 ```
 
-Open project.godot in Godot 4.5.1 and allow asset imports to finish. The initial scene is an asset lab, not a complete game.
+Open project.godot in Godot 4.5.1 and allow asset imports to finish. The main scene now opens the voxel world prototype; the asset lab is still available for smoke validation.
 
 See the [foundation notes](https://github.com/joparoxxx/VOXHAVEN/blob/game/colony-foundation/docs/FOUNDATION.md) for test commands and [GitHub Actions](https://github.com/joparoxxx/VOXHAVEN/actions) for validation results.
+
+## Current Cube World integration
+
+The `game/colony-foundation` branch contains all 107 Cube World GLTF files and both atlas textures. Colonists now cycle through four humanoid variants with embedded Idle and Walk animations. Terrain meshes reference Cube World's pixel block atlas; terrain variants without dedicated texture tiles reuse and tint verified Cube World pixels. This is a visual prototype, not final biome or ore artwork.
+
+Godot import, scene smoke, animation runtime and APK output for these new commits are pending workflow validation; do not treat code inspection as a completed build.
 
 ## Roadmap
 
