@@ -59,9 +59,17 @@ var info: Label
 var speed_button: Button
 var autosave_elapsed := 0.0
 var hud_elapsed := 0.0
-const MIN_ZOOM := 8.0
-const MAX_ZOOM := 65.0
+# Match the pre-orbit range; extra-wide zoom revealed much more terrain
+# and caused expensive render/input spikes on Android.
+const MIN_ZOOM := 12.0
+const MAX_ZOOM := 48.0
 var zoom := 32.0
+# Touch input can deliver multiple events during one rendered frame. Apply
+# only the latest camera transform and a single streaming check per frame.
+var camera_dirty := false
+var chunk_check_dirty := false
+var pinch_reference_distance := 0.0
+var pinch_reference_zoom := 32.0
 var center_chunk := Vector2i(999999,999999)
 
 func _ready() -> void:
@@ -234,8 +242,8 @@ func reset_camera() -> void:
 	if camera_switch != null:
 		camera_switch.set_pressed_no_signal(false)
 		camera_switch.text = "Camera OFF"
-	update_camera()
-	refresh_chunks()
+	camera_dirty = true
+	chunk_check_dirty = true
 
 func _on_role_selected(index: int) -> void:
 	if index < 0 or index >= ROLES.size() or selected_index >= colony.colonists.size():
@@ -526,9 +534,12 @@ func step_zoom(direction: int) -> void:
 	set_zoom(zoom * pow(1.2,direction))
 
 func set_zoom(value: float) -> void:
-	zoom = clampf(value,MIN_ZOOM,MAX_ZOOM)
-	update_camera()
-	refresh_chunks()
+	var clamped := clampf(value,MIN_ZOOM,MAX_ZOOM)
+	if absf(clamped-zoom) < 0.01:
+		return
+	zoom = clamped
+	camera_dirty = true
+	chunk_check_dirty = true
 
 func update_camera() -> void:
 	camera.size = zoom
@@ -555,6 +566,13 @@ func refresh_chunks() -> void:
 	pending.sort_custom(func(a: Vector2i,b: Vector2i) -> bool: return a.distance_squared_to(center_chunk) < b.distance_squared_to(center_chunk))
 
 func _process(_delta: float) -> void:
+	# Gesture events are batched here, not applied separately at touch rate.
+	if camera_dirty:
+		camera_dirty = false
+		update_camera()
+	if chunk_check_dirty:
+		chunk_check_dirty = false
+		refresh_chunks()
 	if simulation_speed > 0.0: colony.advance(_delta*simulation_speed)
 	hud_elapsed += _delta
 	if hud_elapsed >= HUD_UPDATE_INTERVAL:
@@ -630,16 +648,20 @@ var mouse_start := Vector2.ZERO
 var mouse_dragged := false
 
 func pan_camera(movement: Vector2) -> void:
+	if movement.length_squared() < 0.01:
+		return
 	var height := get_viewport().get_visible_rect().size.y
 	focus += CameraRig.pan_delta(movement,yaw,zoom,height)
-	update_camera()
-	refresh_chunks()
+	camera_dirty = true
+	chunk_check_dirty = true
 
 func orbit_camera(movement: Vector2) -> void:
+	if movement.length_squared() < 0.01:
+		return
 	var angles := CameraRig.orbit_angles(yaw,pitch,movement)
 	yaw = angles.x
 	pitch = angles.y
-	update_camera()
+	camera_dirty = true
 
 func _tap_world(screen: Vector2) -> void:
 	if camera_control_enabled:
@@ -647,8 +669,8 @@ func _tap_world(screen: Vector2) -> void:
 		if not hit.is_empty():
 			# Object-viewer pivot: tap the surface to orbit around it.
 			focus = Vector3(hit["position"])+Vector3(0,0.5,0)
-			update_camera()
-			refresh_chunks()
+			camera_dirty = true
+			chunk_check_dirty = true
 		return
 	if action_mode != "Pan":
 		pick_block(screen)
@@ -662,11 +684,18 @@ func _unhandled_input(event: InputEvent) -> void:
 				multi_touch = false
 				select_drag_active = false
 			touch_points[event.index] = event.position
-			if touch_points.size() > 1:
+			if touch_points.size() == 2:
 				multi_touch = true
 				select_drag_active = false
+				var fingers := touch_points.values()
+				pinch_reference_distance = (fingers[0] as Vector2).distance_to(fingers[1] as Vector2)
+				pinch_reference_zoom = zoom
+			elif touch_points.size() > 2:
+				multi_touch = true
 		elif touch_points.has(event.index):
 			touch_points.erase(event.index)
+			if touch_points.size() < 2:
+				pinch_reference_distance = 0.0
 			if touch_points.is_empty() and not multi_touch and not event.canceled:
 				if action_mode == "Select" and touch_dragged and select_drag_active:
 					selection_stage = 2
@@ -684,10 +713,13 @@ func _unhandled_input(event: InputEvent) -> void:
 				if index != event.index:
 					other = touch_points[index]
 			var previous: Vector2 = touch_points[event.index]
-			var old_distance := previous.distance_to(other)
 			var new_distance: float = event.position.distance_to(other)
-			if old_distance > 8.0 and new_distance > 8.0:
-				set_zoom(zoom*old_distance/new_distance)
+			# Absolute pinch reference prevents drift when two fingers translate.
+			# Small temporary distance jitter does not start a chunk reload.
+			if pinch_reference_distance > 12.0 and new_distance > 12.0:
+				var target_zoom := pinch_reference_zoom*pinch_reference_distance/new_distance
+				if absf(target_zoom-zoom) >= 0.08:
+					set_zoom(target_zoom)
 			# Two-finger translation always pans, regardless of orbit mode.
 			pan_camera((event.position-previous)*0.5)
 		elif touch_points.size() == 1 and not multi_touch:
