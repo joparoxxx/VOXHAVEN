@@ -1,6 +1,13 @@
 name: Android prototype APK
 on:
   workflow_dispatch:
+  # Triggered only when the APK workflow itself changes.
+  # Ordinary gameplay commits do not launch an APK export.
+  push:
+    branches:
+      - game/colony-foundation
+    paths:
+      - '.github/workflows/android-build.yml'
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
