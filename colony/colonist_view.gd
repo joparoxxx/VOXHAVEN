@@ -26,7 +26,7 @@ static func _collect_models(folder: String) -> void:
    if dir.current_is_dir():
     _collect_models(path)
    elif entry.to_lower().ends_with(".gltf") or entry.to_lower().ends_with(".glb"):
-    if ResourceLoader.exists(path):
+    if ResourceLoader.exists(path) and ("character" in entry.to_lower() or "colonist" in entry.to_lower() or "human" in entry.to_lower()):
      discovered_models.append(path)
   entry = dir.get_next()
  dir.list_dir_end()
@@ -49,14 +49,18 @@ func setup(state: State) -> void:
  _scan_models()
  if not discovered_models.is_empty():
   var path := discovered_models[posmod(state.id - 1, discovered_models.size())]
-  var resource := load(path) as PackedScene
-  if resource != null:
-   var model := resource.instantiate() as Node3D
-   if model != null:
-    if path.begins_with(CUBE_CHARACTERS):
-     model.scale = Vector3.ONE * 0.65
-    add_child(model)
-    _configure_animations(model)
+  var model := _load_model(path)
+  if model == null:
+   for fallback in FALLBACK_MODELS:
+    model = _load_model(fallback)
+    if model != null:
+     path = fallback
+     break
+  if model != null:
+   if path.begins_with(CUBE_CHARACTERS):
+    model.scale = Vector3.ONE * 0.65
+   add_child(model)
+   _configure_animations(model)
  var label := Label3D.new()
  label.text = state.display_name
  label.position.y = 2.1
@@ -65,6 +69,18 @@ func setup(state: State) -> void:
  label.outline_size = 6
  add_child(label)
  name_label = label
+
+func _load_model(path: String) -> Node3D:
+ if not ResourceLoader.exists(path):
+  return null
+ var resource := load(path) as PackedScene
+ if resource == null:
+  return null
+ var instance := resource.instantiate()
+ if not instance is Node3D:
+  instance.free()
+  return null
+ return instance as Node3D
 
 func _configure_animations(model: Node3D) -> void:
  for node in model.find_children("*", "AnimationPlayer", true, false):
