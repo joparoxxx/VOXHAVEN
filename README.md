@@ -109,32 +109,32 @@ These are commands to **run**, not claims that the latest commit has passed them
 The UI and multitouch input are prototypes; physical Android device testing remains outstanding.
 
 
-### Mining order, falling workers and 3D-viewer camera
+### Mining protection (no gravity) and 3D-viewer camera
 
 - **Strict top-down mining:** the planner queues the highest remaining terrain first.
-- **Gravity:** workers fall to a supported block if their floor disappears, with interpolated movement and a fresh path.
+- **Mining safety instead of gravity:** there is no automatic falling physics. A block cannot be designated, reserved or removed if a living colonist stands anywhere above it in the same column. Standing Cube World trees likewise protect the supporting block and deeper column until they are chopped. Previously queued jobs recheck protection at the moment of mining, so moving onto a target mid-job does not remove the floor.
 - **Camera ON:** a 3D-object-viewer style camera. One-finger drag orbits (yaw/pitch), a tap sets the fixed orbit pivot, two-finger drag pans and pinch zooms. There is **no automatic follow** of a colonist.
 - **Camera OFF:** gameplay tap commands and Select gestures are active; dragging pans the camera when not selecting.
 - Desktop: right-drag orbit, left-drag pan or select, mouse wheel zoom. Reset via Tools → Reset Camera.
 - **Camera-lag regression fix:** original zoom limits 12–48 restored; pinch uses absolute two-finger distance so two-finger translation does not repeatedly zoom, and camera transforms plus chunk-window checks are coalesced to at most once per rendered frame instead of every input event. Camera ON still orbits and OFF keeps normal game tools. Idle camera follow remains removed.
 - **Original 16 × 16 chunk streaming retained:** the prior zoom-based loading/unloading radius 2–4 (5×5–9×9 chunks) is intact. No mobile-only cap, mesher or unload-policy change. Only independent FPS reductions—4 Hz HUD refresh and event-driven excavation updates—are applied. Phone FPS remains unmeasured; compare in-game FPS before/after with the same save, position, zoom and simulation speed.
 
-### Idle FPS investigation — gravity, AI, and world loading
+### Idle FPS diagnostics (gravity removed)
 
-The on-device HUD now displays **FPS, Chunks, Queue, Mesh busy/idle, Gravity/s and AI/s**. This makes idle lag diagnosable:
-- **Queue > 0 / Mesh BUSY:** the game is still generating/uploading 16×16 chunk meshes or collisions even with no user touch.
-- **Queue 0 / Mesh idle but FPS low:** look for rendering cost, AI work or a platform/driver issue.
-- **Gravity/s:** actual ground support probes per real-time second, not the number of colonists. Idle workers reuse the same support until they move or terrain changes.
-- **AI/s:** work-search attempts per second; specialized idle workers now avoid background wandering/path searches, and unreachable-job retries are capped at one per second per worker.
+The HUD shows **FPS, Chunks, Queue, Mesh busy/idle and AI/s**. Gravity/s has been removed because the game no longer runs support probes or falling physics.
 
-The falling mechanics remain in place: removing a supporting block invalidates its gravity cache and makes the worker descend to the next supported floor. Terrain generation caches height/biome once per 16×16 column while preserving the exact `block_at()` results (covered by a seeded/edited chunk equality test). **Chunk dimensions and the original zoom-based 2–4 loading/unloading radius are unchanged.** Improvements to actual FPS require comparison on the same Android scene before/after.
+- **Queue > 0 / Mesh BUSY:** 16×16 chunk meshes/collisions are being generated, potentially affecting FPS.
+- **Queue 0 / Mesh idle, but FPS still low:** investigate rendering, GPU or other simulation work.
+- **AI/s:** number of worker job searches per real-time second.
+
+The separate 16×16 chunk-generation optimization retains the same deterministic voxel output, and the original zoom-based 2–4 chunk loading/unloading radius remains unchanged. Physical-device FPS gains remain unverified.
 
 ## Compact tools and single Mine workflow
 
 The Android toolbar now keeps **Mine**, **Select**, **Tools**, **Worker**, **Job**, a **Camera ON/OFF switch**, and **Save** together, with smaller controls for depth, zoom and simulation speed. Secondary actions (**Pan, Place, Stockpile, Inspect, Cancel**) live in the Tools menu; camera reset lives in Tools → Reset Camera. Independent Dig/Chop/Chop Area buttons have been removed.
 
 - **Mine** is the only resource work order: tap exposed terrain to excavate the block or the chosen depth (1–8). Tap the ground supporting a standing Cube World tree to designate **woodcutting instead**. Tap again to cancel that one order.
-- **Select** uses two ground taps or one-finger drag to outline up to 64 columns. Press **Mine** to automatically designate mining on suitable columns and chopping on standing trees in the area. Tree-support grass is **never queued for mining while the tree is standing**. Once cut, that block requires an explicit new mining order.
+- **Select** uses two ground taps or one-finger drag to outline up to 64 columns. Press **Mine** to automatically designate mining on suitable columns and chopping on standing trees in the area. Blocks under **living colonists or standing trees** are never mined. Once a tree is cut or a colonist moves away, the block can be designated again. Any already-queued job rechecks protection before mining.
 - The three in-game colonists start with distinct occupations: **Miner, Woodcutter, Hauler**. Tap **Worker** to cycle the selected character; choose a role in the adjacent **Job** menu. A role change clears their previous reservation and returns any carried resources to the work queue. Each worker is limited to one active job at a time.
 - Worker roles, excavation requests, felling history, mine/chop orders, stockpile and terrain remain locally saveable. Old saves without a worker-roles field get the default roles.
 - This is a prototype: if no walkable path exists, deep excavations can remain blocked until an access/ramp system is implemented. Godot CI and physical Android UX are tracked separately.
