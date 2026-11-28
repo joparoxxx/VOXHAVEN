@@ -14,21 +14,28 @@ var animation_player: AnimationPlayer
 var idle_clip: StringName
 var walk_clip: StringName
 
+static func _collect_models(folder: String) -> void:
+ var dir := DirAccess.open(folder)
+ if dir == null:
+  return
+ dir.list_dir_begin()
+ var entry := dir.get_next()
+ while entry != "":
+  if entry != "." and entry != "..":
+   var path := folder.path_join(entry)
+   if dir.current_is_dir():
+    _collect_models(path)
+   elif entry.to_lower().ends_with(".gltf") or entry.to_lower().ends_with(".glb"):
+    if ResourceLoader.exists(path):
+     discovered_models.append(path)
+  entry = dir.get_next()
+ dir.list_dir_end()
+
 static func _scan_models() -> void:
  if scanned:
   return
  scanned = true
- var dir := DirAccess.open(CUBE_CHARACTERS)
- if dir != null:
-  dir.list_dir_begin()
-  var file := dir.get_next()
-  while file != "":
-   if not dir.current_is_dir() and (file.to_lower().ends_with(".gltf") or file.to_lower().ends_with(".glb")):
-    var path := CUBE_CHARACTERS.path_join(file)
-    if ResourceLoader.exists(path):
-     discovered_models.append(path)
-   file = dir.get_next()
-  dir.list_dir_end()
+ _collect_models(CUBE_CHARACTERS)
  discovered_models.sort()
  if discovered_models.is_empty():
   for path in FALLBACK_MODELS:
