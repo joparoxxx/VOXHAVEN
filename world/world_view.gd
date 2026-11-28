@@ -9,6 +9,10 @@ const ColonistView = preload("res://colony/colonist_view.gd")
 const StockpileView = preload("res://world/stockpile_view.gd")
 const Nav = preload("res://colony/navigation.gd")
 const ResourceTypes = preload("res://colony/resource_types.gd")
+const WorkOrders = preload("res://colony/work_orders.gd")
+const TOOL_OPTIONS := ["Pan","Place","Stockpile","Inspect","Cancel"]
+const VIEW_OPTIONS := ["Rotate L","Rotate R","Focus","Reset"]
+const ROLES := ["Miner","Woodcutter","Hauler"]
 var colony := Colony.new()
 var colonist_views: Dictionary = {}
 var atlas: Dictionary = {}
@@ -42,7 +46,9 @@ var material := ShaderMaterial.new()
 var yaw := 0.7
 var home_focus := Vector3.ZERO
 var simulation_speed := 1.0
-var selected_index := -1
+var selected_index := 0
+var worker_button: Button
+var job_menu: MenuButton
 var info: Label
 var speed_button: Button
 var autosave_elapsed := 0.0
@@ -93,6 +99,9 @@ func _ready() -> void:
 		colony.logistics.restore(Save.restore_logistics(SAVE_PATH))
 		colony.woodcut.restore(Save.restore_woodcut(SAVE_PATH))
 		colony.dig.restore(Save.restore_dig(SAVE_PATH))
+		var saved_roles := Save.restore_worker_roles(SAVE_PATH)
+		for i in mini(saved_roles.size(),colony.colonists.size()):
+			colony.set_role(colony.colonists[i].id,saved_roles[i])
 		for p in colony.mining.designations:
 			show_mining_marker(p)
 		for p in colony.woodcut.designations:
@@ -111,52 +120,109 @@ func _ready() -> void:
 	add_child(selection_preview)
 	var layer := CanvasLayer.new()
 	add_child(layer)
-	var bar := HBoxContainer.new()
-	bar.position = Vector2(16,16)
-	layer.add_child(bar)
-	for title in ["Pan","Select","Dig","Chop Area","Mine","Chop","Stockpile","Place","Inspect","Cancel","Save"]:
-		var button := Button.new()
-		button.text = title
-		button.custom_minimum_size = Vector2(82,48)
-		bar.add_child(button)
-		button.pressed.connect(select_action.bind(title))
-	for direction in [-1,1]:
-		var zoom_button := Button.new()
-		zoom_button.text = "+" if direction < 0 else "-"
-		zoom_button.custom_minimum_size = Vector2(56,48)
-		bar.add_child(zoom_button)
-		zoom_button.pressed.connect(step_zoom.bind(direction))
-	status = Label.new()
-	status.text = "Mine: tap a block to designate mining"
+	# Compact two-row mobile toolbar; secondary actions are in popup menus.
+	# Flow containers wrap gracefully on smaller Android viewports.
+	var panel := PanelContainer.new()
+	panel.position = Vector2(10,10)
+	panel.custom_minimum_size.x = minf(720.0,maxf(280.0,get_viewport().get_visible_rect().size.x-20.0))
+	layer.add_child(panel)
 	var controls := VBoxContainer.new()
-	controls.position = Vector2(16,76)
-	layer.add_child(controls)
-	var camera_bar := HBoxContainer.new()
-	controls.add_child(camera_bar)
-	for title in ["Rotate L","Rotate R","Reset","Colonist","Focus","1x"]:
+	panel.add_child(controls)
+	var main_bar := HFlowContainer.new()
+	controls.add_child(main_bar)
+	for label in ["Mine","Select"]:
 		var button := Button.new()
-		button.text = title
-		button.custom_minimum_size = Vector2(76,48)
-		camera_bar.add_child(button)
-		button.pressed.connect(test_control.bind(title))
-		if title == "1x": speed_button = button
-	var depth_controls := HBoxContainer.new()
-	controls.add_child(depth_controls)
+		button.text = label
+		button.custom_minimum_size = Vector2(78,44)
+		main_bar.add_child(button)
+		button.pressed.connect(select_action.bind(label))
+	var tools := MenuButton.new()
+	tools.text = "Tools"
+	tools.custom_minimum_size = Vector2(76,44)
+	main_bar.add_child(tools)
+	for i in TOOL_OPTIONS.size():
+		tools.get_popup().add_item(TOOL_OPTIONS[i],i)
+	tools.get_popup().id_pressed.connect(_on_tool_selected)
+	worker_button = Button.new()
+	worker_button.custom_minimum_size = Vector2(78,44)
+	main_bar.add_child(worker_button)
+	worker_button.pressed.connect(test_control.bind("Worker"))
+	job_menu = MenuButton.new()
+	job_menu.custom_minimum_size = Vector2(100,44)
+	main_bar.add_child(job_menu)
+	for i in ROLES.size():
+		job_menu.get_popup().add_item(ROLES[i],i)
+	job_menu.get_popup().id_pressed.connect(_on_role_selected)
+	var view_menu := MenuButton.new()
+	view_menu.text = "Camera"
+	view_menu.custom_minimum_size = Vector2(86,44)
+	main_bar.add_child(view_menu)
+	for i in VIEW_OPTIONS.size():
+		view_menu.get_popup().add_item(VIEW_OPTIONS[i],i)
+	view_menu.get_popup().id_pressed.connect(_on_view_selected)
+	var save_button := Button.new()
+	save_button.text = "Save"
+	save_button.custom_minimum_size = Vector2(65,44)
+	main_bar.add_child(save_button)
+	save_button.pressed.connect(select_action.bind("Save"))
+	var quick_bar := HFlowContainer.new()
+	controls.add_child(quick_bar)
 	for step in [-1,1]:
-		var control := Button.new()
-		control.text = "Depth -" if step < 0 else "Depth +"
-		control.custom_minimum_size = Vector2(92,42)
-		depth_controls.add_child(control)
-		control.pressed.connect(adjust_depth.bind(step))
+		var depth_button := Button.new()
+		depth_button.text = "-" if step < 0 else "+"
+		depth_button.custom_minimum_size = Vector2(44,40)
+		quick_bar.add_child(depth_button)
+		depth_button.pressed.connect(adjust_depth.bind(step))
 		if step < 0:
 			depth_label = Label.new()
-			depth_label.text = "Dig depth: %d" % dig_depth
-			depth_label.custom_minimum_size = Vector2(120,42)
-			depth_controls.add_child(depth_label)
+			depth_label.text = "Depth: %d" % dig_depth
+			depth_label.custom_minimum_size = Vector2(88,40)
+			depth_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+			quick_bar.add_child(depth_label)
+	for direction in [-1,1]:
+		var zoom_button := Button.new()
+		zoom_button.text = "Zoom +" if direction < 0 else "Zoom -"
+		zoom_button.custom_minimum_size = Vector2(86,40)
+		quick_bar.add_child(zoom_button)
+		zoom_button.pressed.connect(step_zoom.bind(direction))
+	speed_button = Button.new()
+	speed_button.text = "1x"
+	speed_button.custom_minimum_size = Vector2(55,40)
+	quick_bar.add_child(speed_button)
+	speed_button.pressed.connect(test_control.bind("1x"))
+	status = Label.new()
+	status.text = "Mine: tap a tree's ground or a block; Select for an area"
+	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	controls.add_child(status)
 	info = Label.new()
 	info.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	controls.add_child(info)
+	_refresh_worker_buttons()
+
+func _on_tool_selected(index: int) -> void:
+	if index >= 0 and index < TOOL_OPTIONS.size():
+		select_action(TOOL_OPTIONS[index])
+
+func _on_view_selected(index: int) -> void:
+	if index >= 0 and index < VIEW_OPTIONS.size():
+		test_control(VIEW_OPTIONS[index])
+
+func _on_role_selected(index: int) -> void:
+	if index < 0 or index >= ROLES.size() or selected_index >= colony.colonists.size():
+		return
+	var selected = colony.colonists[selected_index]
+	if colony.set_role(selected.id,ROLES[index]):
+		_refresh_worker_buttons()
+		status.text = "%s assigned: %s" % [selected.display_name,selected.job_role]
+
+func _refresh_worker_buttons() -> void:
+	if colony.colonists.is_empty() or selected_index < 0:
+		return
+	if worker_button != null:
+		worker_button.text = "Worker %d" % (selected_index+1)
+	if job_menu != null:
+		job_menu.text = colony.colonists[selected_index].job_role
 
 func test_control(action: String) -> void:
 	match action:
@@ -166,9 +232,10 @@ func test_control(action: String) -> void:
 			focus = home_focus
 			yaw = 0.7
 			zoom = 32.0
-		"Colonist":
+		"Colonist", "Worker":
 			if not colony.colonists.is_empty():
 				selected_index = (selected_index+1)%colony.colonists.size()
+				_refresh_worker_buttons()
 		"Focus":
 			if selected_index >= 0 and selected_index < colony.colonists.size():
 				focus = Vector3(colony.colonists[selected_index].position)+Vector3(0.5,0.5,0.5)
@@ -183,10 +250,10 @@ func update_info() -> void:
 	info.text = "FPS: %d | Chunks: %d | Colony time: %ds | Mining: %d | Excavations: %d | Trees: %d | Drops: %d | Stock: %d" % [Engine.get_frames_per_second(),chunks.size(),int(colony.elapsed),colony.mining.designations.size(),colony.dig.columns.size(),colony.woodcut.designations.size(),colony.logistics.unhauled_units(),colony.logistics.stored_units()]
 	if selected_index >= 0 and selected_index < colony.colonists.size():
 		var c = colony.colonists[selected_index]
-		info.text += "\n%s | %s | HP %d | Hunger %d | Thirst %d | Stamina %d | Mood %d" % [c.display_name,c.activity,int(c.health),int(c.hunger),int(c.thirst),int(c.stamina),int(c.happiness)]
+		info.text += "\n%s / %s / %s | HP %d | Stamina %d" % [c.display_name,c.job_role,c.activity,int(c.health),int(c.stamina)]
 
 func save_colony() -> bool:
-	return Save.save(world,SAVE_PATH,colony.mining.jobs_snapshot(),colony.logistics.snapshot(),colony.woodcut.snapshot(),colony.dig.snapshot())
+	return Save.save(world,SAVE_PATH,colony.mining.jobs_snapshot(),colony.logistics.snapshot(),colony.woodcut.snapshot(),colony.dig.snapshot(),colony.worker_roles())
 
 func adjust_depth(direction: int) -> void:
 	dig_depth = clampi(dig_depth+direction,1,colony.dig.MAX_DEPTH)
@@ -227,7 +294,7 @@ func _record_selection(p: Vector3i) -> void:
 		selection_last = p
 		selection_stage = 2
 	update_selection_preview()
-	status.text = "Selected: %d columns | Dig depth: %d" % [selection_count(),dig_depth]
+	status.text = "Selected: %d columns | Press Mine (depth %d)" % [selection_count(),dig_depth]
 
 func _ray_hit(screen: Vector2) -> Dictionary:
 	var origin := camera.project_ray_origin(screen)
@@ -244,36 +311,14 @@ func _select_screen(screen: Vector2) -> void:
 	var point: Vector3 = hit["position"]
 	_record_selection(Vector3i((point-normal*0.01).floor()))
 
-func _dig_selected() -> void:
-	if selection_stage == 0:
-		status.text = "Select an area first (two corners)"
-		return
-	var count := colony.dig.request_area(selection_first,selection_last,dig_depth)
-	if count <= 0:
-		status.text = "Dig area too large (max 64 blocks), or planner full"
-		return
-	status.text = "Dig queued: %d columns x %d layers" % [count,dig_depth]
-	clear_selection()
-	action_mode = "Select"
-
-func _chop_area() -> void:
-	if selection_stage == 0 or selection_count()>colony.dig.MAX_COLUMNS:
-		status.text = "Select up to 64 ground cells first"
-		return
-	var x0 := mini(selection_first.x,selection_last.x)
-	var x1 := maxi(selection_first.x,selection_last.x)
-	var z0 := mini(selection_first.z,selection_last.z)
-	var z1 := maxi(selection_first.z,selection_last.z)
-	var marked := 0
-	for cz in range(floori(float(z0)/16.0),floori(float(z1)/16.0)+1):
-		for cx in range(floori(float(x0)/16.0),floori(float(x1)/16.0)+1):
-			for p in Decor.tree_positions(world,Vector2i(cx,cz),colony.woodcut.harvested):
-				if p.x>=x0 and p.x<=x1 and p.z>=z0 and p.z<=z1 and colony.woodcut.designate(p):
-					show_woodcut_marker(p)
-					marked += 1
-	status.text = "Chop Area marked %d trees" % marked
-	clear_selection()
-	action_mode = "Select"
+func _mine_selected() -> void:
+	var result := WorkOrders.area(world,colony.mining,colony.woodcut,colony.dig,selection_first,selection_last,dig_depth)
+	for tree in result["trees"]:
+		show_woodcut_marker(tree)
+	status.text = str(result["message"])
+	if int(result["columns"]) > 0 or not result["trees"].is_empty():
+		clear_selection()
+		action_mode = "Select"
 
 func _cancel_area() -> void:
 	if selection_stage == 0:
@@ -313,24 +358,23 @@ func select_action(action: String) -> void:
 		"Save":
 			status.text = "Saved" if save_colony() else "Save failed"
 			return
-		"Dig":
-			_dig_selected()
-			return
-		"Chop Area":
-			_chop_area()
-			return
+		"Mine":
+			if selection_stage > 0:
+				_mine_selected()
+				return
 		"Cancel":
-			_cancel_area()
-			return
+			if selection_stage > 0:
+				_cancel_area()
+				return
 	action_mode = action
 	match action:
+		"Mine": status.text = "Mine: tap terrain to dig or a tree to cut; Depth %d" % dig_depth
+		"Select": status.text = "Select: tap two corners or drag, then press Mine"
 		"Pan": status.text = "Pan: drag to move the camera"
-		"Select": status.text = "Select: tap two ground corners, then Dig"
-		"Mine": status.text = "Mine: tap a solid block"
-		"Chop": status.text = "Chop: tap the ground below a tree"
 		"Stockpile": status.text = "Stockpile: tap walkable ground"
 		"Place": status.text = "Place: tap a surface"
 		"Inspect": status.text = "Inspect: tap any block"
+		"Cancel": status.text = "Cancel: tap a designation to remove"
 
 func pick_block(screen: Vector2) -> void:
 	if action_mode == "Pan":
@@ -378,30 +422,14 @@ func pick_block(screen: Vector2) -> void:
 						c.route.clear()
 				refresh_stockpile()
 				status.text = "Stockpile moved to %s" % str(p)
-		"Chop":
-			if hit.normal.y < 0.9:
-				status.text = "Tap the grass below a tree"
-				return
-			var tree: Vector3i = p + Vector3i.UP
-			if colony.woodcut.designations.has(tree):
-				if colony.woodcut.cancel(tree):
-					remove_woodcut_marker(tree)
-					status.text = "Tree designation cancelled"
-			elif colony.woodcut.designate(tree):
-				show_woodcut_marker(tree)
-				status.text = "Tree marked for chopping"
-			else:
-				status.text = "No available Cube World tree at that spot"
 		"Mine":
-			if colony.mining.designations.has(p):
-				if colony.mining.cancel(p):
-					remove_mining_marker(p)
-					status.text = "Mining cancelled"
-			elif colony.mining.designate(p):
-				show_mining_marker(p)
-				status.text = "Mining designated at %s" % str(p)
-			else:
-				status.text = "Cannot designate this block"
+			var result := WorkOrders.single(world,colony.mining,colony.woodcut,colony.dig,p,dig_depth)
+			match str(result["job"]):
+				"tree": show_woodcut_marker(p+Vector3i.UP)
+				"cancel_tree": remove_woodcut_marker(p+Vector3i.UP)
+				"mine": show_mining_marker(p)
+				"cancel_mine": remove_mining_marker(p)
+			status.text = str(result["message"])
 
 func _workers_can_reach(p: Vector3i) -> bool:
 	for c in colony.colonists:
@@ -598,7 +626,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			if touch_points.is_empty() and not multi_touch and not event.canceled:
 				if action_mode == "Select" and touch_dragged and select_drag_active:
 					selection_stage = 2
-					status.text = "Selected: %d columns | Dig depth %d" % [selection_count(),dig_depth]
+					status.text = "Selected: %d columns | Press Mine (depth %d)" % [selection_count(),dig_depth]
 				elif not touch_dragged:
 					pick_block(event.position)
 			select_drag_active = false
@@ -662,6 +690,8 @@ func _unhandled_input(event: InputEvent) -> void:
 func spawn_colony(spawn: Vector3i) -> void:
 	colony.initialize(spawn+Vector3i.UP)
 	colony.terrain = world
+	for i in colony.colonists.size():
+		colony.set_role(colony.colonists[i].id,ROLES[i])
 	var candidates: Array[Vector3i] = []
 	for radius in range(0,9):
 		for z in range(-radius,radius+1):
