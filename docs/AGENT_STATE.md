@@ -31,3 +31,8 @@ Next exact task: inspect current development HEAD, terrain registry, atlas mappi
 - Current colony/colonist_view.gd still uses KayKit Adventurers. Historical commit 585be97 references Quaternius_Cube_World/Characters/Character_Male_1.gltf, but that exact file returned NOT_FOUND on current branch. Do not restore its preload until asset path is verified.
 - world/terrain_atlas.gd and world/world_view.gd still use KayKit BlockBits textures and models. Replacement terrain atlas/UV mapping requires verifying actual Cube World texture files and mapping before switching.
 - Static repository inspection only; Godot imports, runtime rendering, Android builds: NOT RUN. Asset replacement remains incomplete.
+
+## 2026-11-28 Colonist character loader update
+- Commit edbecc1f34c9055d2beb53d4f318cf086c1e8516 updates colony/colonist_view.gd to discover importable Cube World GLTF/GLB character scenes from res://assets/library/Quaternius_Cube_World/Characters, choose by colonist ID, and detect idle/walk animation clips.
+- Retains KayKit character fallback if no valid Cube World character resources exist, and preserves name/activity labels and movement interpolation.
+- Important: verified historical Character_Male_1.gltf path was missing from active branch; actual Cube World character model files have not been confirmed. No claim of successful Cube World character rendering. Godot runtime/import tests and Android build NOT RUN.
