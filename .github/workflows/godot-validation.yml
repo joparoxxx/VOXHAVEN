@@ -102,7 +102,7 @@ jobs:
       - name: Colony simulation and AI tests
         run: |
           set -o pipefail
-          for test in colony_simulation_test colony_ai_test colonist_movement_test mining_jobs_test resource_logistics_test; do
+          for test in colony_simulation_test colony_ai_test colonist_movement_test mining_jobs_test resource_logistics_test woodcut_stockpile_test stockpile_view_test; do
             timeout 180 godot --headless --path . --script "res://tests/$test.gd" 2>&1 | tee "$test.log"
             if grep -E 'SCRIPT ERROR:|ERROR:' "$test.log"; then exit 1; fi
           done

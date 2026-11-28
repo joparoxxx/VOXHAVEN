@@ -22,7 +22,7 @@ var active_key := Vector2i.ZERO
 var revision := 0
 var active_revision := 0
 var action_mode := "Mine"
-var stockpile_view: Node3D
+var stockpile_view: StockpileView
 var woodcut_markers: Dictionary = {}
 var designation_markers: Dictionary = {}
 var status: Label

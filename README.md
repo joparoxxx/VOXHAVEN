@@ -4,7 +4,7 @@
 
 Voxhaven is a **work-in-progress, fully offline 3D colony simulator for Android**, developed with Godot 4 and GDScript. The goal is a seeded, Minecraft-inspired voxel world where humanoid colonists independently gather resources, build a settlement, and manage their needs.
 
-> **Development preview — not a finished game.** The procedural world, Cube World asset wiring, mining-job prototype, and basic resource logistics are committed to `game/colony-foundation`. These recent features are **not yet verified by a passing validation run for the latest gameplay commit**, and Android performance has not been measured.
+> **Development preview — not a finished game.** The procedural world, Cube World models, mining/hauling and continuous walking have previously passed automated validation. Newly implemented woodcutting and physical stockpile are pending CI and Android-device testing. Android performance has not been measured.
 
 ## Current development branch
 
@@ -24,9 +24,9 @@ Voxhaven is a **work-in-progress, fully offline 3D colony simulator for Android*
 | Cube World art | 107 GLTF models and two atlas images; four humanoid character variants; softened Cube World pixel-textured blocks; scaled low-poly forest trees | Latest owner-preferred terrain treatment awaits CI and Android screenshot comparison |
 | Colonists | Three simulated colonists with health, hunger, thirst, stamina, local memory, bounded navigation and simple utility-driven behavior | Needs/AI are prototypes, not a complete survival system |
 | Mining designations | Tap a solid block in Mine mode to mark or cancel it; exclusive job reservation and path-to-work behavior | Mining execution and navigation edge cases are pending test results |
-| Resources | Mining creates tracked, unhauled block resources | Physical item meshes and polished inventory UX are not included |
-| Hauling and storage | Colonists can reserve and carry resource records to a virtual depot with block-count inventory | No placed warehouse building, carrying animation or complete item/equipment system |
-| Save/load | Seed, modified blocks, queued mining designations, pending drops and virtual-depot inventory | Colonist state and full simulation recovery are not yet persisted; compatibility tests pending |
+| Resources | Mining and tree chopping create distinct stone/block and wood resource records | Resource drops are still logical records rather than world item meshes |
+| Hauling and storage | Autonomous pickup/delivery to a visible Cube World crate stockpile with relocatable ground pad and per-resource counts | Initial prototype has one stockpile and no capacity, building, or full inventory UI |
+| Save/load | Seed, terrain edits, mining/woodcut designations, felled-tree state, unhauled items, stock and stockpile position | Colonist state and full simulation recovery remain pending |
 
 These entries describe **code currently present**, not completed, independently verified gameplay milestones.
 
@@ -36,9 +36,9 @@ These entries describe **code currently present**, not completed, independently 
 | --- | --- | --- |
 | 4.0 | Cube World terrain, characters and asset integration | Implemented in source; validation pending |
 | 4.1 | Block selection and mining designations | Prototype implemented; validation pending |
-| 4.2 | Autonomous mining and woodcutting | Mining prototype implemented; woodcutting pending |
+| 4.2 | Autonomous mining and woodcutting | Both job types implemented; CI and device checks pending |
 | 4.3 | Resource drops and inventory | Basic resource records and stock counts implemented |
-| 4.4 | Hauling and storage | Virtual-depot prototype implemented; physical storage pending |
+| 4.4 | Hauling and storage | Visible stockpile and hauling implemented; capacity/building pending |
 | 4.5 | Construction and blueprints | Pending |
 | 4.6 | Colonist equipment and tools | Pending |
 | 4.7 | Farming, food and drinking | Pending |
@@ -89,6 +89,8 @@ godot --headless --path . --script res://tests/world_save_test.gd
 godot --headless --path . --script res://tests/colony_ai_test.gd
 godot --headless --path . --script res://tests/mining_jobs_test.gd
 godot --headless --path . --script res://tests/resource_logistics_test.gd
+godot --headless --path . --script res://tests/woodcut_stockpile_test.gd
+godot --headless --path . --script res://tests/stockpile_view_test.gd
 ```
 
 These are commands to **run**, not claims that the latest commit has passed them. The full [Godot validation workflow](.github/workflows/godot-validation.yml) also checks registry, mesh generation, decoration, Cube World textures, character animation imports and a rendered world smoke scene.
@@ -97,7 +99,9 @@ These are commands to **run**, not claims that the latest commit has passed them
 
 - **Mine:** tap a solid block (or right-click with a mouse) to designate it for autonomous mining; tap again to cancel a designation.
 - **Place:** tap a surface to place a dirt block.
-- **Save:** write terrain edits, pending mining work and stored/unhauled resources to local user storage.
+- **Chop:** tap the ground directly beneath a Cube World tree to mark/unmark a woodcutting job. Colonists navigate, chop, produce wood, and autonomously haul it.
+- **Stockpile:** tap walkable ground to place or relocate the visible storage area (the existing stock moves with it in this prototype). Colonists carry drops here; the crate label shows total stock and wood count.
+- **Save:** write terrain edits, mining/woodcut tasks, harvested trees, stockpile location and stored/unhauled items to local user storage.
 - **Camera:** drag to pan, pinch or use +/− to zoom; buttons provide rotation and focus.
 - **Colonists:** cycle the selected colonist and inspect basic needs/status; use the simulation-speed button to pause or accelerate time.
 
