@@ -60,13 +60,62 @@ func set_block(p: Vector3i, block: int) -> bool:
 func chunk_of(p: Vector3i) -> Vector2i:
 	return Vector2i(floori(float(p.x) / CHUNK_SIZE), floori(float(p.z) / CHUNK_SIZE))
 
+## Build the exact same block array as block_at(), but cache height/biome
+## per x/z column instead of recalculating five noise fields for every air
+## cell. Chunks remain 16x16xHEIGHT, with identical edits and geology.
 func generate_chunk(chunk: Vector2i) -> PackedByteArray:
 	var data := PackedByteArray()
 	data.resize(CHUNK_SIZE * CHUNK_SIZE * HEIGHT)
+	var column_heights := PackedInt32Array()
+	column_heights.resize(CHUNK_SIZE * CHUNK_SIZE)
+	var column_biomes := PackedInt32Array()
+	column_biomes.resize(CHUNK_SIZE * CHUNK_SIZE)
+	var x_origin := chunk.x * CHUNK_SIZE
+	var z_origin := chunk.y * CHUNK_SIZE
+	for z in CHUNK_SIZE:
+		for x in CHUNK_SIZE:
+			var offset := z * CHUNK_SIZE + x
+			var gx := x_origin + x
+			var gz := z_origin + z
+			column_heights[offset] = surface_at(gx,gz)
+			column_biomes[offset] = biome_at(gx,gz)
 	for y in HEIGHT:
 		for z in CHUNK_SIZE:
 			for x in CHUNK_SIZE:
-				data[(y * CHUNK_SIZE + z) * CHUNK_SIZE + x] = block_at(Vector3i(chunk.x * CHUNK_SIZE + x, y, chunk.y * CHUNK_SIZE + z))
+				var offset := z * CHUNK_SIZE + x
+				var index := y * CHUNK_SIZE * CHUNK_SIZE + offset
+				var p := Vector3i(x_origin+x,y,z_origin+z)
+				if edits.has(p):
+					data[index] = int(edits[p])
+					continue
+				var h := column_heights[offset]
+				if y > h:
+					data[index] = Block.AIR
+					continue
+				var biome := column_biomes[offset]
+				if y == h:
+					match biome:
+						Biome.DESERT: data[index] = Block.SAND
+						Biome.FROZEN: data[index] = Block.SNOW
+						Biome.MOUNTAIN: data[index] = Block.STONE
+						Biome.VOLCANIC: data[index] = Block.DARK_STONE
+						_: data[index] = Block.GRASS
+					continue
+				if y >= h - 3:
+					data[index] = Block.SAND if biome == Biome.DESERT else Block.DIRT
+					continue
+				if y > 2 and caves.get_noise_3d(p.x,p.y,p.z) > 0.42:
+					data[index] = Block.AIR
+					continue
+				var ore_value := ore.get_noise_3d(p.x,p.y,p.z)
+				if y < 10 and ore_value > 0.55:
+					data[index] = Block.GOLD
+				elif y < 18 and ore_value > 0.45:
+					data[index] = Block.SILVER
+				elif ore_value > 0.35:
+					data[index] = Block.COPPER
+				else:
+					data[index] = Block.DARK_STONE if y < 8 else Block.STONE
 	return data
 
 ## Prefer flat grassland or forest with solid ground and headroom.
