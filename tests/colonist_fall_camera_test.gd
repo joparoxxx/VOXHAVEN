@@ -49,7 +49,9 @@ func _initialize() -> void:
 	ok = _check(absf(camera_position.distance_to(anchor)-40.0)<0.001, "orbit camera radius preserved", failures) and ok
 	var top := CameraRig.orbit_angles(0.0,1.0,Vector2(0,10000))
 	var bottom := CameraRig.orbit_angles(0.0,1.0,Vector2(0,-10000))
-	ok = _check(top.y <= CameraRig.MAX_PITCH and bottom.y >= CameraRig.MIN_PITCH, "vertical pitch clamps", failures) and ok
+	# Vector2 stores 32-bit floats, while literal pitch clamps are doubles.
+	# Allow sub-pixel rounding tolerance without widening the real camera bounds.
+	ok = _check(top.y <= CameraRig.MAX_PITCH + 0.0001 and bottom.y >= CameraRig.MIN_PITCH - 0.0001, "vertical pitch clamps", failures) and ok
 	ok = _check(absf(CameraRig.orbit_angles(0.0,0.8,Vector2(100,0)).x) > 0.1, "horizontal yaw drag", failures) and ok
 	var same_zoom := CameraRig.pinch_zoom(32.0,200.0,200.0,12.0,48.0)
 	var closer_zoom := CameraRig.pinch_zoom(32.0,200.0,400.0,12.0,48.0)
