@@ -6,6 +6,9 @@ const Decor = preload("res://world/terrain_decor.gd")
 const Atlas = preload("res://world/terrain_atlas.gd")
 const Colony = preload("res://colony/colony_simulation.gd")
 const ColonistView = preload("res://colony/colonist_view.gd")
+const StockpileView = preload("res://world/stockpile_view.gd")
+const Nav = preload("res://colony/navigation.gd")
+const ResourceTypes = preload("res://colony/resource_types.gd")
 var colony := Colony.new()
 var colonist_views: Dictionary = {}
 var atlas: Dictionary = {}
@@ -18,7 +21,9 @@ var worker := Thread.new()
 var active_key := Vector2i.ZERO
 var revision := 0
 var active_revision := 0
-var place_mode := false
+var action_mode := "Mine"
+var stockpile_view: Node3D
+var woodcut_markers: Dictionary = {}
 var designation_markers: Dictionary = {}
 var status: Label
 var world := World.new(123)
@@ -70,19 +75,27 @@ func _ready() -> void:
 	refresh_chunks()
 	spawn_colony(spawn)
 	colony.mining.terrain = world
+	colony.woodcut.terrain = world
 	colony.mining.mined.connect(_on_block_mined)
+	colony.woodcut.chopped.connect(_on_tree_chopped)
 	colony.logistics.delivered.connect(_on_resources_delivered)
 	if not "--world-smoke" in OS.get_cmdline_user_args():
 		colony.mining.restore_jobs(Save.restore_mining_jobs(SAVE_PATH))
 		colony.logistics.restore(Save.restore_logistics(SAVE_PATH))
+		colony.woodcut.restore(Save.restore_woodcut(SAVE_PATH))
 		for p in colony.mining.designations:
 			show_mining_marker(p)
+		for p in colony.woodcut.designations:
+			show_woodcut_marker(p)
+	stockpile_view = StockpileView.new()
+	add_child(stockpile_view)
+	refresh_stockpile()
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	var bar := HBoxContainer.new()
 	bar.position = Vector2(16,16)
 	layer.add_child(bar)
-	for title in ["Mine","Place","Save"]:
+	for title in ["Mine","Chop","Stockpile","Place","Save"]:
 		var button := Button.new()
 		button.text = title
 		button.custom_minimum_size = Vector2(90,48)
@@ -135,38 +148,85 @@ func test_control(action: String) -> void:
 
 func update_info() -> void:
 	if info == null: return
-	info.text = "FPS: %d | Chunks: %d | Colony time: %ds | Mining jobs: %d | Drops: %d | Stock: %d" % [Engine.get_frames_per_second(),chunks.size(),int(colony.elapsed),colony.mining.designations.size(),colony.logistics.unhauled_units(),colony.logistics.stored_units()]
+	info.text = "FPS: %d | Chunks: %d | Colony time: %ds | Mining jobs: %d | Trees: %d | Drops: %d | Stock: %d" % [Engine.get_frames_per_second(),chunks.size(),int(colony.elapsed),colony.mining.designations.size(),colony.woodcut.designations.size(),colony.logistics.unhauled_units(),colony.logistics.stored_units()]
 	if selected_index >= 0 and selected_index < colony.colonists.size():
 		var c = colony.colonists[selected_index]
 		info.text += "\n%s | %s | HP %d | Hunger %d | Thirst %d | Stamina %d | Mood %d" % [c.display_name,c.activity,int(c.health),int(c.hunger),int(c.thirst),int(c.stamina),int(c.happiness)]
 
+func save_colony() -> bool:
+	return Save.save(world,SAVE_PATH,colony.mining.jobs_snapshot(),colony.logistics.snapshot(),colony.woodcut.snapshot())
+
 func select_action(action: String) -> void:
 	if action == "Save":
-		status.text = "Saved" if Save.save(world,SAVE_PATH,colony.mining.jobs_snapshot(),colony.logistics.snapshot()) else "Save failed"
-	else:
-		place_mode = action == "Place"
-		status.text = "Place: tap a surface" if place_mode else "Mine: tap a block to designate mining"
+		status.text = "Saved" if save_colony() else "Save failed"
+		return
+	action_mode = action
+	match action:
+		"Mine": status.text = "Mine: tap a solid block"
+		"Chop": status.text = "Chop: tap the ground below a tree; tap again to cancel"
+		"Stockpile": status.text = "Stockpile: tap a walkable ground tile"
+		"Place": status.text = "Place: tap a surface to place dirt"
 
 func pick_block(screen: Vector2) -> void:
 	var start := camera.project_ray_origin(screen)
 	var end := start + camera.project_ray_normal(screen)*200.0
 	var query := PhysicsRayQueryParameters3D.create(start,end)
 	var hit := get_world_3d().direct_space_state.intersect_ray(query)
-	if hit.is_empty(): return
-	var point: Vector3 = hit.position + hit.normal*(0.01 if place_mode else -0.01)
+	if hit.is_empty():
+		return
+	var placing := action_mode == "Place" or action_mode == "Stockpile"
+	var point: Vector3 = hit.position + hit.normal * (0.01 if placing else -0.01)
 	var p := Vector3i(point.floor())
-	if place_mode:
-		if edit_block(p,World.Block.DIRT):
-			status.text = "Block placed"
-	elif colony.mining.designations.has(p):
-		if colony.mining.cancel(p):
-			remove_mining_marker(p)
-			status.text = "Mining cancelled"
-	elif colony.mining.designate(p):
-		show_mining_marker(p)
-		status.text = "Mining designated at %s" % str(p)
-	else:
-		status.text = "Cannot designate this block"
+	match action_mode:
+		"Place":
+			if edit_block(p,World.Block.DIRT):
+				status.text = "Block placed"
+		"Stockpile":
+			if hit.normal.y < 0.9:
+				status.text = "Choose a flat top surface for storage"
+			elif not Nav.standable(world,p):
+				status.text = "Stockpile requires walkable ground"
+			elif not _workers_can_reach(p):
+				status.text = "No colonist can reach this stockpile"
+			elif colony.logistics.set_depot(p):
+				# A carrier headed to the previous depot must select a new route.
+				for c in colony.colonists:
+					if colony.logistics.carried.has(c.id):
+						c.route.clear()
+				refresh_stockpile()
+				status.text = "Stockpile moved to %s" % str(p)
+		"Chop":
+			if hit.normal.y < 0.9:
+				status.text = "Tap the grass below a tree"
+				return
+			var tree: Vector3i = p + Vector3i.UP
+			if colony.woodcut.designations.has(tree):
+				if colony.woodcut.cancel(tree):
+					remove_woodcut_marker(tree)
+					status.text = "Tree designation cancelled"
+			elif colony.woodcut.designate(tree):
+				show_woodcut_marker(tree)
+				status.text = "Tree marked for chopping"
+			else:
+				status.text = "No available Cube World tree at that spot"
+		"Mine":
+			if colony.mining.designations.has(p):
+				if colony.mining.cancel(p):
+					remove_mining_marker(p)
+					status.text = "Mining cancelled"
+			elif colony.mining.designate(p):
+				show_mining_marker(p)
+				status.text = "Mining designated at %s" % str(p)
+			else:
+				status.text = "Cannot designate this block"
+
+func _workers_can_reach(p: Vector3i) -> bool:
+	for c in colony.colonists:
+		if c.health <= 0.0:
+			continue
+		if c.position == p or not Nav.route(world,c.position,p).is_empty():
+			return true
+	return false
 
 func show_mining_marker(p: Vector3i) -> void:
 	if designation_markers.has(p):
@@ -190,6 +250,37 @@ func remove_mining_marker(p: Vector3i) -> void:
 		designation_markers[p].queue_free()
 		designation_markers.erase(p)
 
+func show_woodcut_marker(p: Vector3i) -> void:
+	if woodcut_markers.has(p):
+		return
+	var marker := MeshInstance3D.new()
+	var slab := BoxMesh.new()
+	slab.size = Vector3(0.85,0.08,0.85)
+	marker.mesh = slab
+	marker.position = Vector3(p) + Vector3(0.5,0.08,0.5)
+	var paint := StandardMaterial3D.new()
+	paint.albedo_color = Color(0.93,0.47,0.12,0.6)
+	paint.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	paint.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	marker.material_override = paint
+	add_child(marker)
+	woodcut_markers[p] = marker
+
+func remove_woodcut_marker(p: Vector3i) -> void:
+	if woodcut_markers.has(p):
+		woodcut_markers[p].queue_free()
+		woodcut_markers.erase(p)
+
+func refresh_stockpile() -> void:
+	if stockpile_view != null:
+		stockpile_view.update_stock(colony.logistics.depot,colony.logistics.stored_units(),int(colony.logistics.inventory.get(ResourceTypes.WOOD,0)))
+
+func _on_tree_chopped(p: Vector3i, amount: int) -> void:
+	remove_woodcut_marker(p)
+	queue_chunk_rebuild(p)
+	if status != null:
+		status.text = "Tree chopped: %d wood ready to haul" % amount
+
 func _on_block_mined(p: Vector3i, _block: int) -> void:
 	remove_mining_marker(p)
 	queue_chunk_rebuild(p)
@@ -197,8 +288,9 @@ func _on_block_mined(p: Vector3i, _block: int) -> void:
 		status.text = "Colonist mined %s" % str(p)
 
 func _on_resources_delivered(block: int, amount: int) -> void:
+	refresh_stockpile()
 	if status != null:
-		status.text = "Stored %d units of block %d" % [amount, block]
+		status.text = "Stockpiled %d %s" % [amount,ResourceTypes.display_name(block)]
 
 func step_zoom(direction: int) -> void:
 	set_zoom(zoom * pow(1.2,direction))
@@ -239,7 +331,7 @@ func _process(_delta: float) -> void:
 		autosave_elapsed += _delta
 		if autosave_elapsed >= 60.0:
 			autosave_elapsed = 0.0
-			if not Save.save(world,SAVE_PATH,colony.mining.jobs_snapshot(),colony.logistics.snapshot()): status.text = "Autosave failed"
+			if not save_colony(): status.text = "Autosave failed"
 	for colonist in colony.colonists:
 		if colonist_views.has(colonist.id):
 			var view = colonist_views[colonist.id]
@@ -277,13 +369,16 @@ func build_chunk(key: Vector2i, mesh: ArrayMesh) -> void:
 	node.position = Vector3(key.x*16,0,key.y*16)
 	add_child(node)
 	if mesh.get_surface_count()>0: node.create_trimesh_collision()
-	Decor.populate(world,key,node)
+	Decor.populate(world,key,node,colony.woodcut.harvested)
 	chunks[key] = node
 
 func edit_block(p: Vector3i, block: int) -> bool:
 	if not world.set_block(p,block): return false
 	if colony.mining.cancel(p):
 		remove_mining_marker(p)
+	var tree := p + Vector3i.UP
+	if colony.woodcut.cancel(tree):
+		remove_woodcut_marker(tree)
 	queue_chunk_rebuild(p)
 	return true
 
