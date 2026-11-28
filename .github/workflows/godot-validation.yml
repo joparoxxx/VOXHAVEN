@@ -83,6 +83,8 @@ jobs:
         run: |
           set -o pipefail
           timeout 180 godot --headless --path . --script res://tests/world_save_test.gd 2>&1 | tee persistence.log
+          timeout 180 godot --headless --path . --script res://tests/saved_world_cache_test.gd 2>&1 | tee saved_cache.log
+          if grep -E 'SCRIPT ERROR:|ERROR:' saved_cache.log; then exit 1; fi
           if grep -E 'SCRIPT ERROR:|ERROR:' persistence.log; then exit 1; fi
       - name: Terrain decoration test
         run: |

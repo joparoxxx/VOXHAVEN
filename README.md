@@ -109,25 +109,18 @@ These are commands to **run**, not claims that the latest commit has passed them
 The UI and multitouch input are prototypes; physical Android device testing remains outstanding.
 
 
-### Mining protection (no gravity) and 3D-viewer camera
+### Restored gravity, safe mining and 3D-viewer camera
 
-- **Strict top-down mining:** the planner queues the highest remaining terrain first.
-- **Mining safety instead of gravity:** there is no automatic falling physics. A block cannot be designated, reserved or removed if a living colonist stands anywhere above it in the same column. Standing Cube World trees likewise protect the supporting block and deeper column until they are chopped. Previously queued jobs recheck protection at the moment of mining, so moving onto a target mid-job does not remove the floor.
-- **Camera ON:** a 3D-object-viewer style camera. One-finger drag orbits (yaw/pitch), a tap sets the fixed orbit pivot, two-finger drag pans and pinch zooms. There is **no automatic follow** of a colonist.
-- **Camera OFF:** gameplay tap commands and Select gestures are active; dragging pans the camera when not selecting.
-- Desktop: right-drag orbit, left-drag pan or select, mouse wheel zoom. Reset via Tools → Reset Camera.
-- **Camera-lag regression fix:** original zoom limits 12–48 restored; pinch uses absolute two-finger distance so two-finger translation does not repeatedly zoom, and camera transforms plus chunk-window checks are coalesced to at most once per rendered frame instead of every input event. Camera ON still orbits and OFF keeps normal game tools. Idle camera follow remains removed.
-- **Original 16 × 16 chunk streaming retained:** the prior zoom-based loading/unloading radius 2–4 (5×5–9×9 chunks) is intact. No mobile-only cap, mesher or unload-policy change. Only independent FPS reductions—4 Hz HUD refresh and event-driven excavation updates—are applied. Phone FPS remains unmeasured; compare in-game FPS before/after with the same save, position, zoom and simulation speed.
+- **Gravity restored:** colonists fall to the next standable lower block if terrain disappears beneath them, with cached support probes and interpolated falling animations.
+- **Prevent unsafe mines:** living colonists and standing trees protect all blocks below their vertical column. The Mine command checks protection when creating, reserving and completing work; unsafe jobs remain pending instead of deleting the floor.
+- **3D-viewer Camera ON/OFF:** one-finger orbit when ON, free pan and gameplay tools when OFF, pinch zoom and two-finger pan in both modes. No follow button.
+- **Original streaming unchanged:** horizontal chunks remain 16×16, zoom-based loading/unloading radius 2–4.
+- **Saved data performance fix:** the renderer caches a read-only snapshot of world edits across chunk meshes, rebuilding that snapshot only when terrain actually changes. Previously, all saved edits were duplicated for every queued chunk, potentially expensive on older saves.
+- **Save recovery:** Tools → **New World (Backup)** asks for confirmation, archives the old `world.json` inside app storage and restarts fresh. It never silently clears the player's save. Legacy version-1 saves still load, and invalid saves cannot be auto-overwritten.
 
-### Idle FPS diagnostics (gravity removed)
+### Idle FPS diagnostics
 
-The HUD shows **FPS, Chunks, Queue, Mesh busy/idle and AI/s**. Gravity/s has been removed because the game no longer runs support probes or falling physics.
-
-- **Queue > 0 / Mesh BUSY:** 16×16 chunk meshes/collisions are being generated, potentially affecting FPS.
-- **Queue 0 / Mesh idle, but FPS still low:** investigate rendering, GPU or other simulation work.
-- **AI/s:** number of worker job searches per real-time second.
-
-The separate 16×16 chunk-generation optimization retains the same deterministic voxel output, and the original zoom-based 2–4 chunk loading/unloading radius remains unchanged. Physical-device FPS gains remain unverified.
+The HUD shows **FPS, Chunks, Queue, Mesh, Gravity/s and AI/s**. A busy mesh queue may indicate rendering work; high gravity/AI readings indicate simulation work. The actual idle FPS impact needs testing with both the old save and a fresh world on the same phone.
 
 ## Compact tools and single Mine workflow
 

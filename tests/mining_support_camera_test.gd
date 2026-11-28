@@ -1,6 +1,6 @@
 extends SceneTree
-## Ground safety replaces gravity: mining is forbidden under any living
-## colonist or standing Cube World tree, including deeper underground blocks.
+## Mining is forbidden under living colonists / standing trees. Grid gravity
+## is restored for legacy save holes and terrain changes outside the Mine tool.
 const World = preload("res://world/voxel_world.gd")
 const Colony = preload("res://colony/colony_simulation.gd")
 const Mining = preload("res://colony/mining_jobs.gd")
@@ -58,12 +58,12 @@ func _initialize() -> void:
 	ok = _check(colony.mining.reserve(miner),"job can restart when occupant leaves",failures) and ok
 	ok = _check(colony.mining.complete(miner),"safe unoccupied target can be mined",failures) and ok
 	ok = _check(world.block_at(support) == World.Block.AIR,"successful mine removes only safe target",failures) and ok
-	# Even if an external edit explicitly removes a floor, no falling simulation
-	# should move characters to a different Y level.
+	# Old saves or direct terrain changes can still remove support outside Mine.
+	# The restored gravity must land the character on the next solid floor.
 	var same_pos: Vector3i = miner.position
 	world.set_block(same_pos+Vector3i.DOWN,World.Block.AIR)
 	colony.advance(Colony.STEP)
-	ok = _check(miner.position == same_pos,"no gravity or automatic falling",failures) and ok
+	ok = _check(miner.position == same_pos+Vector3i.DOWN,"gravity restored for unsafe legacy edit",failures) and ok
 	# Trees protect their grass root block and deeper voxels, until chopped.
 	var forest := World.new(123)
 	var tree := Vector3i.ZERO
@@ -97,7 +97,7 @@ func _initialize() -> void:
 	ok = _check(angles.y <= CameraRig.MAX_PITCH+0.0001,"camera pitch remains bounded",failures) and ok
 	if not ok:
 		print("Mining protection diagnostics: ",failures," target=",world.block_at(support)," roles=",colony.worker_roles()," tree=",tree)
-	print("Protected mining / no gravity / camera regression: ","PASS" if ok else "FAIL")
+	print("Protected mining / restored gravity / camera regression: ","PASS" if ok else "FAIL")
 	quit(0 if ok else 1)
 
 func _check(condition: bool,description: String,failures: Array[String]) -> bool:
