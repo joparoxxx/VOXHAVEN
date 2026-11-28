@@ -25,8 +25,10 @@ func _initialize() -> void:
  ok = ok and not colony.mining.designate(Vector3i(0, 55, 0))
  # Stop on the mining signal before the logistics system collects the drop.
  # Mining must produce the correct resource immediately, independently of hauling.
- for step in range(16):
-  colony.advance(1.0)
+ # Advance exactly one locomotion tick at a time; observe the resource
+ # immediately when mined, before the later hauling transaction can claim it.
+ for step in range(80):
+  colony.advance(Colony.STEP)
   if not events.is_empty():
    break
  var mined := world.block_at(target) == World.Block.AIR

@@ -52,7 +52,8 @@ func sync_state(state: State,delta: float) -> void:
 		_play_motion("Punch")
 	elif state.activity == "Carrying resources":
 		_play_motion("Walk_Hold" if moving else "Idle_Hold")
-	elif moving:
+	elif moving or (not state.route.is_empty() and state.activity != "Yielding path"):
+		# Keep the walk cycle active between closely spaced grid waypoints.
 		_play_motion("Walk")
 	else:
 		_play_motion("Idle")
