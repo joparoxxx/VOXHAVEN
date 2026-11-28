@@ -48,7 +48,7 @@ func sync_state(state: State,delta: float) -> void:
 		rotation.y = lerp_angle(rotation.y, atan2(offset.x,offset.z), clampf(delta*12.0,0.0,1.0))
 	# The imported Cube World characters already contain Punch and Walk_Hold.
 	# Play a job motion until the timed job finishes, not just a single still frame.
-	if state.activity == "Mining":
+	if state.activity == "Mining" or state.activity == "Chopping":
 		_play_motion("Punch")
 	elif state.activity == "Carrying resources":
 		_play_motion("Walk_Hold" if moving else "Idle_Hold")

@@ -5,15 +5,18 @@ const Nav = preload("res://colony/navigation.gd")
 const Decision = preload("res://colony/decision.gd")
 const MiningJobs = preload("res://colony/mining_jobs.gd")
 const ResourceLogistics = preload("res://colony/resource_logistics.gd")
+const WoodcutJobs = preload("res://colony/woodcut_jobs.gd")
 var terrain: World
 # Four navigable cells per second. Rendering catches up over each 0.25 s tick.
 const STEP := 0.25
 const MAX_STEPS := 16
 const MINING_DURATION := 0.75
+const WOODCUT_DURATION := 1.5
 const YIELD_TIMEOUT := 0.75
 var colonists: Array[Colonist] = []
 var mining := MiningJobs.new()
 var logistics := ResourceLogistics.new()
+var woodcut := WoodcutJobs.new()
 var elapsed := 0.0
 var accumulator := 0.0
 
@@ -21,6 +24,8 @@ func initialize(spawn: Vector3i) -> void:
 	mining.reset()
 	logistics.reset(spawn)
 	logistics.mining = mining
+	woodcut.reset()
+	woodcut.logistics = logistics
 	colonists.clear()
 	elapsed = 0.0
 	accumulator = 0.0
@@ -30,6 +35,7 @@ func initialize(spawn: Vector3i) -> void:
 func advance(delta: float) -> void:
 	mining.terrain = terrain
 	logistics.terrain = terrain
+	woodcut.terrain = terrain
 	accumulator += maxf(0.0,delta)
 	var steps := 0
 	while accumulator >= STEP and steps < MAX_STEPS:
@@ -39,6 +45,7 @@ func advance(delta: float) -> void:
 				execute(colonist)
 			elif colonist.health <= 0.0:
 				mining.release(colonist.id)
+				woodcut.release(colonist.id)
 				logistics.release(colonist.id, colonist.position)
 				colonist.work_progress = 0.0
 		accumulator -= STEP
@@ -48,6 +55,7 @@ func advance(delta: float) -> void:
 func execute(c: Colonist) -> void:
 	if not Nav.standable(terrain,c.position):
 		mining.release(c.id)
+		woodcut.release(c.id)
 		logistics.release(c.id, c.position)
 		c.activity="Blocked"
 		c.work_progress = 0.0
@@ -59,6 +67,7 @@ func execute(c: Colonist) -> void:
 		var p: Vector3i = c.route[0]
 		if not Nav.standable(terrain,p):
 			mining.release(c.id)
+			woodcut.release(c.id)
 			logistics.release(c.id, c.position)
 			c.work_progress = 0.0
 			c.path_wait = 0.0
@@ -73,6 +82,7 @@ func execute(c: Colonist) -> void:
 				c.activity = "Yielding path"
 				if c.path_wait >= YIELD_TIMEOUT:
 					mining.release(c.id)
+					woodcut.release(c.id)
 					logistics.release(c.id, c.position)
 					c.route.clear()
 					c.actions.clear()
@@ -87,6 +97,8 @@ func execute(c: Colonist) -> void:
 			c.activity="Carrying resources"
 		elif mining.has_assignment(c.id):
 			c.activity="Walking to mine"
+		elif woodcut.has_assignment(c.id):
+			c.activity="Walking to chop"
 		else:
 			c.activity="Walking"
 		c.remember(c.position)
@@ -103,12 +115,19 @@ func execute(c: Colonist) -> void:
 		c.work_progress = 0.0
 		if mining.complete(c):
 			return
+	if woodcut.has_assignment(c.id):
+		c.activity = "Chopping"
+		c.work_progress += STEP
+		if c.work_progress < WOODCUT_DURATION:
+			return
+		c.work_progress = 0.0
+		if woodcut.complete(c):
+			return
 	elif c.stamina >= 15.0 and logistics.reserve(c):
 		c.work_progress = 0.0
 		return
-	elif c.stamina >= 15.0 and mining.reserve(c):
+	elif c.stamina >= 15.0 and _reserve_work(c):
 		c.work_progress = 0.0
-		c.activity = "Going to mine"
 		return
 	if c.actions.is_empty():
 		if elapsed<c.next_decision: return
@@ -135,3 +154,14 @@ func execute(c: Colonist) -> void:
 						c.route=Nav.route(terrain,c.position,target)
 					break
 				if not c.route.is_empty(): break
+
+# Divide mining/woodcut priority between colonists so neither job type starves.
+func _reserve_work(c: Colonist) -> bool:
+	var assigned := false
+	if c.id % 2 == 0:
+		assigned = woodcut.reserve(c) or mining.reserve(c)
+	else:
+		assigned = mining.reserve(c) or woodcut.reserve(c)
+	if assigned:
+		c.activity = "Going to chop" if woodcut.has_assignment(c.id) else "Going to mine"
+	return assigned

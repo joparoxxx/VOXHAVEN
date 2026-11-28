@@ -5,6 +5,7 @@ const World = preload("res://world/voxel_world.gd")
 const Nav = preload("res://colony/navigation.gd")
 const Colonist = preload("res://colony/colonist_state.gd")
 const MiningJobs = preload("res://colony/mining_jobs.gd")
+const Resources = preload("res://colony/resource_types.gd")
 
 const MAX_DROPS_SCAN := 8
 const MAX_DROPS := 512
@@ -30,6 +31,36 @@ func reset(spawn: Vector3i) -> void:
  reservations.clear()
  assignments.clear()
  carried.clear()
+
+# Stockpile cell is always traversable; inventory stays in place on relocation.
+func set_depot(p: Vector3i) -> bool:
+ if terrain == null or not Nav.standable(terrain,p):
+  return false
+ depot = p
+ return true
+
+# Generic item drop API for mining and woodcutting; never silently overwrite
+# another resource type at the same position.
+func add_drop(p: Vector3i, item_id: int, amount: int) -> bool:
+ if mining == null or terrain == null or not Resources.is_valid(item_id) or amount <= 0:
+  return false
+ if p.y < 0 or p.y >= World.HEIGHT:
+  return false
+ if mining.drops.size() >= MAX_DROPS and not mining.drops.has(p):
+  return false
+ var chosen := p
+ if mining.drops.has(chosen) and int(mining.drops[chosen].get("block",-1)) != item_id:
+  var found := false
+  for offset in [Vector3i.LEFT,Vector3i.RIGHT,Vector3i.FORWARD,Vector3i.BACK,Vector3i.UP]:
+   var nearby: Vector3i = p + offset
+   if not mining.drops.has(nearby) and nearby.y >= 0 and nearby.y < World.HEIGHT:
+    chosen = nearby
+    found = true
+    break
+  if not found or mining.drops.size() >= MAX_DROPS:
+   return false
+ _add_drop(chosen,item_id,amount)
+ return true
 
 func stored_units() -> int:
  var result := 0
@@ -115,7 +146,7 @@ func reserve(c: Colonist) -> bool:
  return true
 
 func _near_depot(p: Vector3i) -> bool:
- return absi(p.x - depot.x) + absi(p.z - depot.z) <= 2 and absi(p.y - depot.y) <= 1
+ return absi(p.x - depot.x) + absi(p.z - depot.z) <= 1 and absi(p.y - depot.y) <= 1
 
 func _depot_route(start: Vector3i) -> Array[Vector3i]:
  var nearest: Array[Vector3i] = []
@@ -207,7 +238,7 @@ func restore(data: Dictionary) -> void:
     continue
    var block := int(entry[0])
    var count := int(entry[1])
-   if block <= World.Block.AIR or block > World.Block.GOLD or count <= 0:
+   if not Resources.is_valid(block) or count <= 0:
     continue
    inventory[block] = int(inventory.get(block, 0)) + count
  var rows = data.get("drops", [])
@@ -226,6 +257,6 @@ func restore(data: Dictionary) -> void:
    var p := Vector3i(int(entry[0]), int(entry[1]), int(entry[2]))
    var block := int(entry[3])
    var count := int(entry[4])
-   if p.y < 0 or p.y >= World.HEIGHT or block <= World.Block.AIR or block > World.Block.GOLD or count <= 0:
+   if p.y < 0 or p.y >= World.HEIGHT or not Resources.is_valid(block) or count <= 0:
     continue
    _add_drop(p, block, count)
