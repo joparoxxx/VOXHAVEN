@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   # Triggered only when the APK workflow itself changes.
   # Ordinary gameplay commits do not launch an APK export.
-  # QA export: compact tools, unified Mine and per-worker jobs (83cc578).
+  # QA export: strict top-down mining, worker gravity and full camera orbit/follow (632a3da).
   push:
     branches:
       - game/colony-foundation
