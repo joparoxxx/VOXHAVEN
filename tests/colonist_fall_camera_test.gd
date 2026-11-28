@@ -44,6 +44,17 @@ func _initialize() -> void:
 	ok = _check(absf(visual.position.y-float(landed.y)) < 0.02, "visual settles at landing after frames", failures) and ok
 	colony.advance(Colony.STEP)
 	ok = _check(c.position == landed and c.activity != "Blocked", "worker remains grounded and navigable after next step", failures) and ok
+	# The worker is now idle on stable terrain; repeated physics ticks must
+	# not resample procedural ground just to rediscover the same support.
+	var checks_before_idle := colony.gravity_probe_count
+	for idle in range(12):
+		colony.advance(Colony.STEP)
+	ok = _check(colony.gravity_probe_count == checks_before_idle, "idle gravity support checks stay cached", failures) and ok
+	# Any ground edit invalidates the cache; a second removed floor drops again.
+	world.set_block(Vector3i(0,27,0),World.Block.AIR)
+	world.set_block(Vector3i(0,24,0),World.Block.STONE)
+	colony.advance(Colony.STEP)
+	ok = _check(c.position == Vector3i(0,25,0), "terrain edit invalidates gravity cache and triggers a second fall", failures) and ok
 	var anchor := Vector3(2,5,7)
 	var camera_position := CameraRig.position_for(anchor,1.1,0.8,40.0)
 	ok = _check(absf(camera_position.distance_to(anchor)-40.0)<0.001, "orbit camera radius preserved", failures) and ok

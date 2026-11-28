@@ -23,6 +23,15 @@ var elapsed := 0.0
 var accumulator := 0.0
 # Excavation planner needs changes, not four full area scans each second.
 var planner_refresh_elapsed := 0.0
+# Ground support depends only on the worker's cell and terrain edit revision.
+# Re-checking identical cells twice every tick was wasted work on idle phones.
+var _ground_cache: Dictionary = {}
+var _gravity_world: World
+var gravity_probe_count := 0
+var _fall_no_landing: Dictionary = {}
+# Avoid repeated expensive A* job searches on an unchanged idle worker.
+var _next_job_search: Dictionary = {}
+var job_search_count := 0
 
 func initialize(spawn: Vector3i) -> void:
 	mining.reset()
@@ -39,6 +48,12 @@ func initialize(spawn: Vector3i) -> void:
 	elapsed = 0.0
 	accumulator = 0.0
 	planner_refresh_elapsed = 0.0
+	_ground_cache.clear()
+	_gravity_world = null
+	_fall_no_landing.clear()
+	gravity_probe_count = 0
+	_next_job_search.clear()
+	job_search_count = 0
 	for i in 3:
 		colonists.append(Colonist.new(i+1,"Colonist %d" % (i+1),spawn))
 
@@ -80,7 +95,7 @@ func advance(delta: float) -> void:
 		steps += 1
 
 func execute(c: Colonist) -> void:
-	if not Nav.standable(terrain,c.position):
+	if not _has_ground_support(c):
 		mining.release(c.id)
 		woodcut.release(c.id)
 		logistics.release(c.id, c.position)
@@ -150,7 +165,11 @@ func execute(c: Colonist) -> void:
 		c.work_progress = 0.0
 		if woodcut.complete(c):
 			return
-	if c.stamina >= 15.0 and active_job_count(c.id) == 0:
+	if c.stamina >= 15.0 and active_job_count(c.id) == 0 and elapsed >= float(_next_job_search.get(c.id,0.0)):
+		# Unreachable orders previously triggered A* route attempts 4 times/s
+		# per idle worker, even while the camera and world were stationary.
+		_next_job_search[c.id] = elapsed + 1.0
+		job_search_count += 1
 		match c.job_role:
 			"Miner":
 				if mining.reserve(c):
@@ -167,6 +186,15 @@ func execute(c: Colonist) -> void:
 				# Preserve existing standalone simulation tests and old generalist AI.
 				if logistics.reserve(c) or _reserve_work(c):
 					return
+	# The playable colony has specialized workers: while no task exists,
+	# they observe/rest instead of generating repeated exploratory A* routes.
+	if c.job_role != "Generalist":
+		if c.stamina < 70.0:
+			c.activity = "Resting"
+			c.stamina = minf(100.0,c.stamina+2.0*STEP)
+		else:
+			c.activity = "Idle"
+		return
 	if c.actions.is_empty():
 		if elapsed<c.next_decision: return
 		c.next_decision=elapsed+3.0
@@ -225,6 +253,7 @@ func set_role(worker_id: int, new_role: String) -> bool:
 		c.actions.clear()
 		c.work_progress = 0.0
 		c.path_wait = 0.0
+		_next_job_search.erase(c.id)
 		c.job_role = new_role
 		c.activity = "Idle"
 		return true
@@ -240,7 +269,10 @@ func worker_roles() -> Array[String]:
 ## Worker drops to the first standable cell directly below; current job and
 ## path are reset so routefinding starts from the new position next tick.
 func _settle_unsupported(c: Colonist) -> bool:
-	if terrain == null or Nav.standable(terrain,c.position):
+	if terrain == null or _has_ground_support(c):
+		return false
+	var unresolved: Dictionary = _fall_no_landing.get(c.id,{})
+	if unresolved.get("position",Vector3i(0,-1,0)) == c.position and int(unresolved.get("revision",-1)) == terrain.edit_revision:
 		return false
 	if terrain.block_at(c.position) != World.Block.AIR or terrain.block_at(c.position+Vector3i.UP) != World.Block.AIR:
 		return false
@@ -253,6 +285,7 @@ func _settle_unsupported(c: Colonist) -> bool:
 		if Nav.standable(terrain,below):
 			break
 	if landing == c.position or not Nav.standable(terrain,landing):
+		_fall_no_landing[c.id] = {"position":c.position,"revision":terrain.edit_revision}
 		return false
 	mining.release(c.id)
 	woodcut.release(c.id)
@@ -263,6 +296,8 @@ func _settle_unsupported(c: Colonist) -> bool:
 	c.work_progress = 0.0
 	c.path_wait = 0.0
 	c.position = landing
+	_fall_no_landing.erase(c.id)
+	_next_job_search.erase(c.id)
 	c.activity = "Falling"
 	c.remember(landing)
 	return true
@@ -273,3 +308,20 @@ func _on_mining_completed(_position: Vector3i, _block: int) -> void:
 	if not dig.columns.is_empty():
 		planner_refresh_elapsed = 0.0
 		dig.schedule()
+
+## Cached support probe: editing blocks or moving a worker invalidates it.
+## Other ticks reuse the result and never re-run procedural terrain noise.
+func _has_ground_support(c: Colonist) -> bool:
+	if terrain == null:
+		return false
+	if _gravity_world != terrain:
+		_gravity_world = terrain
+		_ground_cache.clear()
+		_fall_no_landing.clear()
+	var prior: Dictionary = _ground_cache.get(c.id,{})
+	if prior.get("position",Vector3i(0,-1,0)) == c.position and int(prior.get("revision",-1)) == terrain.edit_revision:
+		return bool(prior.get("supported",false))
+	gravity_probe_count += 1
+	var supported := Nav.standable(terrain,c.position)
+	_ground_cache[c.id] = {"position":c.position,"revision":terrain.edit_revision,"supported":supported}
+	return supported
