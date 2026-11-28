@@ -41,3 +41,8 @@ Next exact task: inspect current development HEAD, terrain registry, atlas mappi
 - Commit d84c4aaf6c591ae3ca5d5e3e0ddddb3d39c48f96 changes Cube World colonist asset discovery to recursively scan nested directories under Characters; previously only the top-level folder was scanned.
 - No new GLTF models generated; no legacy assets deleted. Existing fallback remains until verified character scenes import successfully.
 - Phase 4.0 remains in progress: terrain atlas still points at KayKit BlockBits; character visual replacement and Godot import/runtime/APK tests are not verified.
+
+## 2026-11-28 Phase 4.0 — character scene validation
+- Commit 3fb23afa90e55875f1ea23965d873ba4013d7fee filters recursively discovered Cube World character files by character/colonist/human filename and validates each chosen PackedScene instantiates to Node3D; invalid selected Cube World scenes trigger legacy fallback attempts.
+- This is defensive integration, not verified Cube World character replacement. Current active terrain atlas still uses KayKit BlockBits.
+- Godot import, runtime and Android APK tests: NOT RUN. Do not mark Phase 4.0 complete.
