@@ -50,12 +50,18 @@ func advance(delta: float) -> void:
 		for colonist in colonists:
 			colonist.tick(STEP)
 			if terrain != null and colonist.health>0.0:
-				execute(colonist)
+				if not _settle_unsupported(colonist):
+					execute(colonist)
 			elif colonist.health <= 0.0:
 				mining.release(colonist.id)
 				woodcut.release(colonist.id)
 				logistics.release(colonist.id, colonist.position)
 				colonist.work_progress = 0.0
+		# A worker can remove another worker's floor during this very tick.
+		# Resolve support a second time so no one remains hovering.
+		for colonist in colonists:
+			if terrain != null and colonist.health > 0.0:
+				_settle_unsupported(colonist)
 		accumulator -= STEP
 		elapsed += STEP
 		steps += 1
@@ -216,3 +222,34 @@ func worker_roles() -> Array[String]:
 	for c in colonists:
 		result.append(c.job_role)
 	return result
+
+## Grid gravity for removed ground. Does not route through solid voxels.
+## Worker drops to the first standable cell directly below; current job and
+## path are reset so routefinding starts from the new position next tick.
+func _settle_unsupported(c: Colonist) -> bool:
+	if terrain == null or Nav.standable(terrain,c.position):
+		return false
+	if terrain.block_at(c.position) != World.Block.AIR or terrain.block_at(c.position+Vector3i.UP) != World.Block.AIR:
+		return false
+	var landing := c.position
+	for y in range(c.position.y-1,0,-1):
+		var below := Vector3i(c.position.x,y,c.position.z)
+		if terrain.block_at(below) != World.Block.AIR:
+			break
+		landing = below
+		if Nav.standable(terrain,below):
+			break
+	if landing == c.position or not Nav.standable(terrain,landing):
+		return false
+	mining.release(c.id)
+	woodcut.release(c.id)
+	# Drop any carried resources at the landing position, not in mid-air.
+	logistics.release(c.id,landing)
+	c.route.clear()
+	c.actions.clear()
+	c.work_progress = 0.0
+	c.path_wait = 0.0
+	c.position = landing
+	c.activity = "Falling"
+	c.remember(landing)
+	return true

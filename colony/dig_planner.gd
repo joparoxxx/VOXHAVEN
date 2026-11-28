@@ -84,7 +84,7 @@ func schedule() -> void:
  # Strict upper-layer barrier across the entire selected area:
  # do not issue deeper mining jobs while any shallow block remains.
  var pending: Array[Dictionary] = []
- var shallowest := MAX_DEPTH
+ var highest_remaining := -1
  for key in columns.keys():
   var next := _next_solid(key)
   if next.y < 0 or mining.is_tree_base(next):
@@ -97,24 +97,22 @@ func schedule() -> void:
    columns.erase(key)
    continue
   var limits: Dictionary = columns[key]
-  var tier := int(limits["top"]) - next.y
-  shallowest = mini(shallowest,tier)
-  pending.append({"key":key,"next":next,"tier":tier})
+  highest_remaining = maxi(highest_remaining,next.y)
+  pending.append({"key":key,"next":next})
  # Cancel planner-owned deeper reservations if the upper layer still exists.
  for key in active.keys():
   if not columns.has(key):
    active.erase(key)
    continue
   var target: Vector3i = active[key]
-  var limits: Dictionary = columns[key]
-  if int(limits["top"])-target.y > shallowest and owned.has(target):
+  if target.y < highest_remaining and owned.has(target):
    mining.cancel(target)
    owned.erase(target)
    active.erase(key)
  for entry in pending:
   if active.size() >= MAX_ACTIVE:
    break
-  if int(entry["tier"]) != shallowest:
+  if Vector3i(entry["next"]).y != highest_remaining:
    continue
   var key: Vector2i = entry["key"]
   var next: Vector3i = entry["next"]
