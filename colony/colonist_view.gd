@@ -1,5 +1,11 @@
 extends Node3D
-const Model = preload("res://assets/library/Quaternius_Cube_World/Characters/Character_Male_1.gltf")
+# These four GLTF scenes are present in the Cube World asset library.
+const MODELS = [
+	preload("res://assets/library/Quaternius_Cube_World/Characters/Character_Male_1.gltf"),
+	preload("res://assets/library/Quaternius_Cube_World/Characters/Character_Female_1.gltf"),
+	preload("res://assets/library/Quaternius_Cube_World/Characters/Character_Male_2.gltf"),
+	preload("res://assets/library/Quaternius_Cube_World/Characters/Character_Female_2.gltf")
+]
 const State = preload("res://colony/colonist_state.gd")
 
 var name_label: Label3D
@@ -7,7 +13,7 @@ var animation_players: Array[AnimationPlayer] = []
 
 func setup(state: State) -> void:
 	position = Vector3(state.position)+Vector3(0.5,0,0.5)
-	var model := Model.instantiate() as Node3D
+	var model := MODELS[posmod(state.id - 1, MODELS.size())].instantiate() as Node3D
 	model.scale = Vector3.ONE * 0.65
 	add_child(model)
 	for player in model.find_children("*","AnimationPlayer",true,false):
