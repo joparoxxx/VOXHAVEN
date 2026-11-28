@@ -36,3 +36,8 @@ Next exact task: inspect current development HEAD, terrain registry, atlas mappi
 - Commit edbecc1f34c9055d2beb53d4f318cf086c1e8516 updates colony/colonist_view.gd to discover importable Cube World GLTF/GLB character scenes from res://assets/library/Quaternius_Cube_World/Characters, choose by colonist ID, and detect idle/walk animation clips.
 - Retains KayKit character fallback if no valid Cube World character resources exist, and preserves name/activity labels and movement interpolation.
 - Important: verified historical Character_Male_1.gltf path was missing from active branch; actual Cube World character model files have not been confirmed. No claim of successful Cube World character rendering. Godot runtime/import tests and Android build NOT RUN.
+
+## 2026-11-28 Phase 4.0 continuation — character discovery
+- Commit d84c4aaf6c591ae3ca5d5e3e0ddddb3d39c48f96 changes Cube World colonist asset discovery to recursively scan nested directories under Characters; previously only the top-level folder was scanned.
+- No new GLTF models generated; no legacy assets deleted. Existing fallback remains until verified character scenes import successfully.
+- Phase 4.0 remains in progress: terrain atlas still points at KayKit BlockBits; character visual replacement and Godot import/runtime/APK tests are not verified.
