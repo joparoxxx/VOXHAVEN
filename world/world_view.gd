@@ -244,7 +244,7 @@ func _process(_delta: float) -> void:
 		if colonist_views.has(colonist.id):
 			var view = colonist_views[colonist.id]
 			view.visible = chunks.has(world.chunk_of(colonist.position)) and colonist.health > 0.0
-			view.sync_state(colonist,_delta)
+			view.sync_state(colonist,_delta*simulation_speed)
 	if worker.is_started() and not worker.is_alive():
 		var arrays: Array = worker.wait_to_finish()
 		if active_revision == revision and in_window(active_key):

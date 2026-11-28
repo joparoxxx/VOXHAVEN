@@ -6,8 +6,11 @@ const Decision = preload("res://colony/decision.gd")
 const MiningJobs = preload("res://colony/mining_jobs.gd")
 const ResourceLogistics = preload("res://colony/resource_logistics.gd")
 var terrain: World
-const STEP := 1.0
-const MAX_STEPS := 4
+# Four navigable cells per second. Rendering catches up over each 0.25 s tick.
+const STEP := 0.25
+const MAX_STEPS := 16
+const MINING_DURATION := 0.75
+const YIELD_TIMEOUT := 0.75
 var colonists: Array[Colonist] = []
 var mining := MiningJobs.new()
 var logistics := ResourceLogistics.new()
@@ -37,6 +40,7 @@ func advance(delta: float) -> void:
 			elif colonist.health <= 0.0:
 				mining.release(colonist.id)
 				logistics.release(colonist.id, colonist.position)
+				colonist.work_progress = 0.0
 		accumulator -= STEP
 		elapsed += STEP
 		steps += 1
@@ -46,6 +50,8 @@ func execute(c: Colonist) -> void:
 		mining.release(c.id)
 		logistics.release(c.id, c.position)
 		c.activity="Blocked"
+		c.work_progress = 0.0
+		c.path_wait = 0.0
 		c.route.clear()
 		c.actions.clear()
 		return
@@ -54,29 +60,54 @@ func execute(c: Colonist) -> void:
 		if not Nav.standable(terrain,p):
 			mining.release(c.id)
 			logistics.release(c.id, c.position)
+			c.work_progress = 0.0
+			c.path_wait = 0.0
 			c.route.clear()
 			c.actions.clear()
 			return
 		for other in colonists:
 			if other != c and other.health>0.0 and other.position==p:
-				mining.release(c.id)
-				logistics.release(c.id, c.position)
-				c.route.clear()
-				c.actions.clear()
+				# A fellow worker can vacate this cell on the next 0.25 s tick.
+				# Do not cancel the job and force replanning on every brief overlap.
+				c.path_wait += STEP
+				c.activity = "Yielding path"
+				if c.path_wait >= YIELD_TIMEOUT:
+					mining.release(c.id)
+					logistics.release(c.id, c.position)
+					c.route.clear()
+					c.actions.clear()
+					c.path_wait = 0.0
+					c.work_progress = 0.0
 				return
+		c.path_wait = 0.0
+		c.work_progress = 0.0
 		c.position=c.route.pop_front()
-		c.stamina=maxf(0.0,c.stamina-2.0)
-		c.activity="Walking"
+		c.stamina=maxf(0.0,c.stamina-2.0*STEP)
+		if logistics.carried.has(c.id):
+			c.activity="Carrying resources"
+		elif mining.has_assignment(c.id):
+			c.activity="Walking to mine"
+		else:
+			c.activity="Walking"
 		c.remember(c.position)
 		return
 	if logistics.has_job(c.id):
 		logistics.progress(c)
 		return
 	if mining.has_assignment(c.id):
-		if mining.complete(c): return
+		# Hold a real work phase at the target: no instantaneous one-step mining.
+		c.activity = "Mining"
+		c.work_progress += STEP
+		if c.work_progress < MINING_DURATION:
+			return
+		c.work_progress = 0.0
+		if mining.complete(c):
+			return
 	elif c.stamina >= 15.0 and logistics.reserve(c):
+		c.work_progress = 0.0
 		return
 	elif c.stamina >= 15.0 and mining.reserve(c):
+		c.work_progress = 0.0
 		c.activity = "Going to mine"
 		return
 	if c.actions.is_empty():

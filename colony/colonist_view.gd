@@ -38,12 +38,23 @@ func _play_motion(clip: String) -> void:
 			player.play(key,0.15)
 			break
 
+const WALK_SPEED := 4.0
+
 func sync_state(state: State,delta: float) -> void:
 	var target := Vector3(state.position)+Vector3(0.5,0,0.5)
-	var offset := target-position
-	var moving := Vector2(offset.x,offset.z).length()>0.05
+	var offset: Vector3 = target-position
+	var moving: bool = offset.length_squared()>0.0025
 	if moving:
-		rotation.y=atan2(offset.x,offset.z)
-	_play_motion("Walk" if moving else "Idle")
-	position=position.move_toward(target,delta*3.0)
+		rotation.y = lerp_angle(rotation.y, atan2(offset.x,offset.z), clampf(delta*12.0,0.0,1.0))
+	# The imported Cube World characters already contain Punch and Walk_Hold.
+	# Play a job motion until the timed job finishes, not just a single still frame.
+	if state.activity == "Mining":
+		_play_motion("Punch")
+	elif state.activity == "Carrying resources":
+		_play_motion("Walk_Hold" if moving else "Idle_Hold")
+	elif moving:
+		_play_motion("Walk")
+	else:
+		_play_motion("Idle")
+	position=position.move_toward(target,maxf(0.0,delta)*WALK_SPEED)
 	name_label.text=state.display_name+" | "+state.activity

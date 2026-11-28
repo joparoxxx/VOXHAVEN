@@ -7,16 +7,16 @@ func _initialize() -> void:
 	if colony.colonists.size() != 3:
 		quit(1)
 		return
-	colony.advance(0.5)
+	colony.advance(0.125)
 	if colony.elapsed != 0.0:
 		quit(1)
 		return
-	colony.advance(0.5)
-	if colony.elapsed != 1.0 or colony.colonists[0].hunger <= 0.0 or colony.colonists[0].thirst <= 0.0:
+	colony.advance(0.125)
+	if colony.elapsed != Colony.STEP or colony.colonists[0].hunger <= 0.0 or colony.colonists[0].thirst <= 0.0:
 		quit(1)
 		return
 	colony.advance(20.0)
-	if colony.elapsed != 5.0:
+	if colony.elapsed != Colony.STEP * (Colony.MAX_STEPS + 1):
 		quit(1)
 		return
 	colony.colonists[0].tick(10000.0)

@@ -103,6 +103,10 @@ These are commands to **run**, not claims that the latest commit has passed them
 
 The UI and multitouch input are prototypes; physical Android device testing remains outstanding.
 
+## Continuous colonist movement (development)
+
+The colony now advances one navigable cell every 0.25 simulation seconds instead of one cell per second, with matching render interpolation and eased facing. Miners play their available Punch clip during a 0.75-second work phase, and carriers use the existing Walk_Hold animation. The simulation remains deterministic, offline, grid-based and collision-aware, with brief yielding when another colonist occupies the next cell. These changes are committed for validation and Android visual review; they do not alter the imported humanoid GLTF models.
+
 ## CI and Android APK
 
 [GitHub Actions](https://github.com/joparoxxx/VOXHAVEN/actions) contains two separate workflows:

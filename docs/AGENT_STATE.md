@@ -38,3 +38,9 @@
 - Restored `Pixel Blocks/` + `Blocks_PixelArt.png` UV extraction and texture while retaining previously scaled Quaternius trees. Added a lightweight Godot spatial shader with bilinear/mipmap sampling, mild saturation reduction (0.76) and contrast reduction (0.78), without touching source atlases/characters.
 - The shader's uniforms are adjustable without reauthoring terrain meshes. Updated atlas regression test to enforce the intended pixel-texture source rather than low-poly palette swatches.
 - Visual improvement is provisional until Godot CI and a new physical-device APK screenshot confirm readability, texture filtering and terrain/tree/character cohesion. No claim of an Android build or passing validation for this change.
+
+## 2026-11-28 continuous colonist locomotion and work (pending CI)
+- Root cause of stop-start walking: the simulation previously advanced one grid cell per 1.0-second tick while the renderer moved 3 cells/s and reached the next waypoint in about 0.33 seconds, then idled for the remaining tick.
+- Shortened the deterministic step to 0.25 s with the same maximum 4 seconds per advance call (MAX_STEPS=16). Visual interpolation now matches 4 cells/s and honors the 1x/2x/3x simulation speed multiplier. Logical navigation, collision checks and offline simulation remain grid-based.
+- Mining takes a continuous 0.75-second work phase with the existing Punch animation; hauling uses existing Walk_Hold when carrying. Workers briefly yield for occupied path tiles rather than immediately canceling their job; stamina movement cost is normalized per simulated second.
+- Added deterministic movement/work test and updated existing fixed-step test and test workflow. Models/terrain assets and mining/resource ownership remain unchanged. CI and Android-device motion quality still need validation.

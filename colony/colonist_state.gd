@@ -11,6 +11,9 @@ var position := Vector3i.ZERO
 var curiosity := 1.0
 var memory: Array[Vector3i] = []
 var route: Array[Vector3i] = []
+# Job interaction and temporarily occupied paths are tracked separately from rendering.
+var work_progress := 0.0
+var path_wait := 0.0
 var actions: Array[String] = []
 var activity := "Idle"
 var next_decision := 0.0
