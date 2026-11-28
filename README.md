@@ -119,6 +119,16 @@ The UI and multitouch input are prototypes; physical Android device testing rema
 - **Camera-lag regression fix:** original zoom limits 12–48 restored; pinch uses absolute two-finger distance so two-finger translation does not repeatedly zoom, and camera transforms plus chunk-window checks are coalesced to at most once per rendered frame instead of every input event. Camera ON still orbits and OFF keeps normal game tools. Idle camera follow remains removed.
 - **Original 16 × 16 chunk streaming retained:** the prior zoom-based loading/unloading radius 2–4 (5×5–9×9 chunks) is intact. No mobile-only cap, mesher or unload-policy change. Only independent FPS reductions—4 Hz HUD refresh and event-driven excavation updates—are applied. Phone FPS remains unmeasured; compare in-game FPS before/after with the same save, position, zoom and simulation speed.
 
+### Idle FPS investigation — gravity, AI, and world loading
+
+The on-device HUD now displays **FPS, Chunks, Queue, Mesh busy/idle, Gravity/s and AI/s**. This makes idle lag diagnosable:
+- **Queue > 0 / Mesh BUSY:** the game is still generating/uploading 16×16 chunk meshes or collisions even with no user touch.
+- **Queue 0 / Mesh idle but FPS low:** look for rendering cost, AI work or a platform/driver issue.
+- **Gravity/s:** actual ground support probes per real-time second, not the number of colonists. Idle workers reuse the same support until they move or terrain changes.
+- **AI/s:** work-search attempts per second; specialized idle workers now avoid background wandering/path searches, and unreachable-job retries are capped at one per second per worker.
+
+The falling mechanics remain in place: removing a supporting block invalidates its gravity cache and makes the worker descend to the next supported floor. Terrain generation caches height/biome once per 16×16 column while preserving the exact `block_at()` results (covered by a seeded/edited chunk equality test). **Chunk dimensions and the original zoom-based 2–4 loading/unloading radius are unchanged.** Improvements to actual FPS require comparison on the same Android scene before/after.
+
 ## Compact tools and single Mine workflow
 
 The Android toolbar now keeps **Mine**, **Select**, **Tools**, **Worker**, **Job**, a **Camera ON/OFF switch**, and **Save** together, with smaller controls for depth, zoom and simulation speed. Secondary actions (**Pan, Place, Stockpile, Inspect, Cancel**) live in the Tools menu; camera reset lives in Tools → Reset Camera. Independent Dig/Chop/Chop Area buttons have been removed.
