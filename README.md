@@ -4,7 +4,7 @@
 
 Voxhaven is a **work-in-progress, fully offline 3D colony simulator for Android**, developed with Godot 4 and GDScript. The goal is a seeded, Minecraft-inspired voxel world where humanoid colonists independently gather resources, build a settlement, and manage their needs.
 
-> **Development preview — not a finished game.** Core gameplay, autonomous woodcutting, hauling and visible stockpile passed [Godot validation #46147714951](https://github.com/joparoxxx/VOXHAVEN/actions/runs/46147714951) on commit `3215bcc`. The [Android debug APK build #46147531755](https://github.com/joparoxxx/VOXHAVEN/actions/runs/46147531755) succeeded for the same gameplay code (the subsequent commit changed only a test). Physical Android gameplay, visuals and performance still need testing.
+> **Development preview — not a finished game.** The unified Mine/woodcut workflow, one-job-per-colonist occupations, tree-support protection, and compact toolbar passed [Godot validation #46152304537](https://github.com/joparoxxx/VOXHAVEN/actions/runs/46152304537) on commit `83cc578`. The [Android ARM64 debug APK build #46152358440](https://github.com/joparoxxx/VOXHAVEN/actions/runs/46152358440) succeeded from the same gameplay code; the later commit only updates its workflow trigger. Actual Android touch input, layout, framerate and animation smoothness still need device verification.
 
 ## Current development branch
 
@@ -34,8 +34,8 @@ These entries describe **prototype functionality**, supported by passing automat
 
 | Phase | Milestone | Status |
 | --- | --- | --- |
-| 4.0 | Cube World terrain, characters and asset integration | Implemented in source; validation pending |
-| 4.1 | Block selection and mining designations | Prototype implemented; validation pending |
+| 4.0 | Cube World terrain, characters and asset integration | Imported and validated in Godot CI; device visual QA pending |
+| 4.1 | Block selection and mining designations | Implemented and passed Godot CI; device input QA pending |
 | 4.2 | Autonomous mining and woodcutting | Implemented, automated integration tests passed; Android QA pending |
 | 4.3 | Resource drops and inventory | Basic resource records and stock counts implemented |
 | 4.4 | Hauling and storage | Visible stockpile and hauling tests passed; capacity/building pending |
@@ -91,6 +91,7 @@ godot --headless --path . --script res://tests/mining_jobs_test.gd
 godot --headless --path . --script res://tests/resource_logistics_test.gd
 godot --headless --path . --script res://tests/woodcut_stockpile_test.gd
 godot --headless --path . --script res://tests/stockpile_view_test.gd
+godot --headless --path . --script res://tests/role_and_mine_tool_test.gd
 ```
 
 These are commands to **run**, not claims that the latest commit has passed them. The full [Godot validation workflow](.github/workflows/godot-validation.yml) also checks registry, mesh generation, decoration, Cube World textures, character animation imports and a rendered world smoke scene.
@@ -128,7 +129,7 @@ The colony now advances one navigable cell every 0.25 simulation seconds instead
 1. **Godot validation** — automatically runs on selected gameplay/asset/test changes to `game/colony-foundation`; imports assets and executes scene/data/AI tests. [View workflow runs](https://github.com/joparoxxx/VOXHAVEN/actions/workflows/godot-validation.yml).
 2. **Android prototype APK** — manually dispatched debug export using Godot 4.5.1 and Android ARM64. [View APK runs](https://github.com/joparoxxx/VOXHAVEN/actions/workflows/android-build.yml).
 
-**Validation snapshot (November 28, 2026):** The latest gameplay commit inspected was `3ea8f55` (mining/resource logistics); its Godot validation was **in progress**, not passed. An older Android APK workflow succeeded on commit `993916f` on November 27, **not** on the latest gameplay commit. Check the linked workflow history for newer outcomes. An APK from an older commit does not validate current features.
+**Validation snapshot (November 28, 2026):** Godot validation for `83cc578` (unified Mine, job roles, protected roots) passed [run #46152304537](https://github.com/joparoxxx/VOXHAVEN/actions/runs/46152304537): assets, terrain, mining/hauling, woodcutting, excavation depth, role persistence and rendered smoke tests. Android ARM64 debug export passed [run #46152358440](https://github.com/joparoxxx/VOXHAVEN/actions/runs/46152358440) on `caf5396`, which changes only the APK workflow trigger after the validated gameplay commit. The debug artifact is `voxhaven-android-debug`. Physical device behavior and performance remain unverified.
 
 For a trustworthy release candidate, require passing Godot imports/tests for the exact commit, a successful Android debug export for that same commit, verified artifact availability, and separate physical-device performance/interaction testing.
 
