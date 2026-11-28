@@ -10,8 +10,8 @@ const StockpileView = preload("res://world/stockpile_view.gd")
 const Nav = preload("res://colony/navigation.gd")
 const ResourceTypes = preload("res://colony/resource_types.gd")
 const WorkOrders = preload("res://colony/work_orders.gd")
-const TOOL_OPTIONS := ["Pan","Place","Stockpile","Inspect","Cancel"]
-const VIEW_OPTIONS := ["Rotate L","Rotate R","Focus","Reset"]
+const TOOL_OPTIONS := ["Pan","Place","Stockpile","Inspect","Cancel","Reset Camera"]
+const CameraRig = preload("res://world/camera_rig.gd")
 const ROLES := ["Miner","Woodcutter","Hauler"]
 var colony := Colony.new()
 var colonist_views: Dictionary = {}
@@ -44,6 +44,12 @@ var focus := Vector3(8,28,8)
 var camera: Camera3D
 var material := ShaderMaterial.new()
 var yaw := 0.7
+var pitch := 0.785398
+var camera_follow := false
+var camera_switch: Button
+var follow_worker_id := -1
+var follow_anchor := Vector3(8,28,8)
+var follow_offset := Vector3.ZERO
 var home_focus := Vector3.ZERO
 var simulation_speed := 1.0
 var selected_index := 0
@@ -52,8 +58,8 @@ var job_menu: MenuButton
 var info: Label
 var speed_button: Button
 var autosave_elapsed := 0.0
-const MIN_ZOOM := 12.0
-const MAX_ZOOM := 48.0
+const MIN_ZOOM := 8.0
+const MAX_ZOOM := 65.0
 var zoom := 32.0
 var center_chunk := Vector2i(999999,999999)
 
@@ -64,6 +70,7 @@ func _ready() -> void:
 	var spawn := world.find_spawn()
 	focus = Vector3(spawn)+Vector3(0.5,1.0,0.5)
 	home_focus = focus
+	follow_anchor = focus
 	atlas = Atlas.build_lookup()
 	# Keep the user's Cube World pixel texture, but soften high-frequency detail
 	# and mute strong greens/browns without changing source assets or block data.
@@ -153,13 +160,14 @@ func _ready() -> void:
 	for i in ROLES.size():
 		job_menu.get_popup().add_item(ROLES[i],i)
 	job_menu.get_popup().id_pressed.connect(_on_role_selected)
-	var view_menu := MenuButton.new()
-	view_menu.text = "Camera"
-	view_menu.custom_minimum_size = Vector2(86,44)
-	main_bar.add_child(view_menu)
-	for i in VIEW_OPTIONS.size():
-		view_menu.get_popup().add_item(VIEW_OPTIONS[i],i)
-	view_menu.get_popup().id_pressed.connect(_on_view_selected)
+	# One switch replaces fixed 45-degree rotate buttons; touch gestures
+	# always provide full orbital rotation, pitch, pan and pinch zoom.
+	camera_switch = Button.new()
+	camera_switch.text = "Follow OFF"
+	camera_switch.toggle_mode = true
+	camera_switch.custom_minimum_size = Vector2(106,44)
+	main_bar.add_child(camera_switch)
+	camera_switch.toggled.connect(_on_camera_follow_toggled)
 	var save_button := Button.new()
 	save_button.text = "Save"
 	save_button.custom_minimum_size = Vector2(65,44)
@@ -201,12 +209,39 @@ func _ready() -> void:
 	_refresh_worker_buttons()
 
 func _on_tool_selected(index: int) -> void:
-	if index >= 0 and index < TOOL_OPTIONS.size():
+	if index < 0 or index >= TOOL_OPTIONS.size():
+		return
+	if TOOL_OPTIONS[index] == "Reset Camera":
+		reset_camera()
+	else:
 		select_action(TOOL_OPTIONS[index])
 
-func _on_view_selected(index: int) -> void:
-	if index >= 0 and index < VIEW_OPTIONS.size():
-		test_control(VIEW_OPTIONS[index])
+func _on_camera_follow_toggled(enabled: bool) -> void:
+	camera_follow = enabled
+	if camera_switch != null:
+		camera_switch.text = "Follow ON" if enabled else "Follow OFF"
+	follow_offset = Vector3.ZERO
+	follow_worker_id = -1
+	if enabled and selected_index >= 0 and selected_index < colony.colonists.size():
+		var worker = colony.colonists[selected_index]
+		follow_worker_id = worker.id
+		follow_anchor = Vector3(worker.position)+Vector3(0.5,0.8,0.5)
+	if status != null:
+		status.text = "Follow ON: drag to orbit, tap target, pinch to zoom" if enabled else "Free camera: drag to pan; two fingers to orbit/zoom"
+
+func reset_camera() -> void:
+	camera_follow = false
+	follow_worker_id = -1
+	follow_offset = Vector3.ZERO
+	focus = home_focus
+	yaw = 0.7
+	pitch = 0.785398
+	zoom = 32.0
+	if camera_switch != null:
+		camera_switch.set_pressed_no_signal(false)
+		camera_switch.text = "Follow OFF"
+	update_camera()
+	refresh_chunks()
 
 func _on_role_selected(index: int) -> void:
 	if index < 0 or index >= ROLES.size() or selected_index >= colony.colonists.size():
@@ -223,22 +258,21 @@ func _refresh_worker_buttons() -> void:
 		worker_button.text = "Worker %d" % (selected_index+1)
 	if job_menu != null:
 		job_menu.text = colony.colonists[selected_index].job_role
+	if camera_follow:
+		follow_worker_id = colony.colonists[selected_index].id
 
 func test_control(action: String) -> void:
 	match action:
-		"Rotate L": yaw -= PI/4.0
-		"Rotate R": yaw += PI/4.0
-		"Reset":
-			focus = home_focus
-			yaw = 0.7
-			zoom = 32.0
+		"Reset": reset_camera()
 		"Colonist", "Worker":
 			if not colony.colonists.is_empty():
 				selected_index = (selected_index+1)%colony.colonists.size()
 				_refresh_worker_buttons()
 		"Focus":
 			if selected_index >= 0 and selected_index < colony.colonists.size():
-				focus = Vector3(colony.colonists[selected_index].position)+Vector3(0.5,0.5,0.5)
+				follow_worker_id = colony.colonists[selected_index].id
+				follow_anchor = Vector3(colony.colonists[selected_index].position)+Vector3(0.5,0.8,0.5)
+				focus = follow_anchor
 		"1x":
 			simulation_speed = fmod(simulation_speed+1.0,4.0)
 			speed_button.text = "Pause" if simulation_speed == 0.0 else "%dx" % int(simulation_speed)
@@ -513,7 +547,7 @@ func set_zoom(value: float) -> void:
 
 func update_camera() -> void:
 	camera.size = zoom
-	camera.position = focus + Vector3(sin(yaw)*40,40,cos(yaw)*40)
+	camera.position = CameraRig.position_for(focus,yaw,pitch,40.0)
 	camera.look_at(focus)
 
 func refresh_chunks() -> void:
@@ -537,6 +571,15 @@ func refresh_chunks() -> void:
 
 func _process(_delta: float) -> void:
 	if simulation_speed > 0.0: colony.advance(_delta*simulation_speed)
+	if camera_follow:
+		if follow_worker_id > 0:
+			for c in colony.colonists:
+				if c.id == follow_worker_id and c.health > 0.0:
+					follow_anchor = Vector3(c.position)+Vector3(0.5,0.8,0.5)
+					break
+		focus = focus.lerp(follow_anchor+follow_offset,clampf(_delta*7.0,0.0,1.0))
+		update_camera()
+		refresh_chunks()
 	update_info()
 	if not "--world-smoke" in OS.get_cmdline_user_args():
 		autosave_elapsed += _delta
@@ -604,12 +647,51 @@ var touch_points: Dictionary = {}
 var touch_start := Vector2.ZERO
 var touch_dragged := false
 var multi_touch := false
+var mouse_start := Vector2.ZERO
+var mouse_dragged := false
 
 func pan_camera(movement: Vector2) -> void:
-	var height := maxf(1.0,get_viewport().get_visible_rect().size.y)
-	focus += Vector3(-movement.x,0,-movement.y).rotated(Vector3.UP,yaw)*zoom/height
+	var height := get_viewport().get_visible_rect().size.y
+	var motion := CameraRig.pan_delta(movement,yaw,zoom,height)
+	if camera_follow:
+		follow_offset += motion
+	else:
+		focus += motion
 	update_camera()
 	refresh_chunks()
+
+func orbit_camera(movement: Vector2) -> void:
+	var angles := CameraRig.orbit_angles(yaw,pitch,movement)
+	yaw = angles.x
+	pitch = angles.y
+	update_camera()
+
+func _tap_world(screen: Vector2) -> void:
+	if camera_follow:
+		_focus_on_tap(screen)
+	if action_mode != "Pan":
+		pick_block(screen)
+
+func _focus_on_tap(screen: Vector2) -> void:
+	# A tapped worker becomes a moving follow target; a terrain tap becomes
+	# a static orbit pivot. The Mine/Select command still runs independently.
+	var closest := 55.0
+	follow_worker_id = -1
+	for worker_id in colonist_views:
+		var view: Node3D = colonist_views[worker_id]
+		if not view.visible:
+			continue
+		var projected := camera.unproject_position(view.global_position+Vector3(0,1,0))
+		var distance := projected.distance_to(screen)
+		if distance < closest:
+			closest = distance
+			follow_worker_id = int(worker_id)
+			follow_anchor = view.global_position+Vector3(0,0.8,0)
+	if follow_worker_id < 0:
+		var hit := _ray_hit(screen)
+		if not hit.is_empty():
+			follow_anchor = Vector3(hit["position"])+Vector3(0,0.5,0)
+	follow_offset = Vector3.ZERO
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
@@ -620,7 +702,9 @@ func _unhandled_input(event: InputEvent) -> void:
 				multi_touch = false
 				select_drag_active = false
 			touch_points[event.index] = event.position
-			if touch_points.size() > 1: multi_touch = true
+			if touch_points.size() > 1:
+				multi_touch = true
+				select_drag_active = false
 		elif touch_points.has(event.index):
 			touch_points.erase(event.index)
 			if touch_points.is_empty() and not multi_touch and not event.canceled:
@@ -628,22 +712,26 @@ func _unhandled_input(event: InputEvent) -> void:
 					selection_stage = 2
 					status.text = "Selected: %d columns | Press Mine (depth %d)" % [selection_count(),dig_depth]
 				elif not touch_dragged:
-					pick_block(event.position)
+					_tap_world(event.position)
 			select_drag_active = false
 		return
 	if event is InputEventScreenDrag:
-		if not touch_points.has(event.index): return
+		if not touch_points.has(event.index):
+			return
 		if touch_points.size() == 2:
 			var other := Vector2.ZERO
 			for index in touch_points:
-				if index != event.index: other = touch_points[index]
+				if index != event.index:
+					other = touch_points[index]
 			var previous: Vector2 = touch_points[event.index]
 			var old_distance := previous.distance_to(other)
-			var new_distance: float = (event as InputEventScreenDrag).position.distance_to(other)
+			var new_distance: float = event.position.distance_to(other)
 			if old_distance > 8.0 and new_distance > 8.0:
-				set_zoom(zoom * old_distance / new_distance)
+				set_zoom(zoom*old_distance/new_distance)
+			# Two-finger translation always pans, regardless of orbit mode.
+			pan_camera((event.position-previous)*0.5)
 		elif touch_points.size() == 1 and not multi_touch:
-			if event.position.distance_to(touch_start) > 12:
+			if event.position.distance_to(touch_start) > 12.0:
 				touch_dragged = true
 			if touch_dragged and action_mode == "Select":
 				if not select_drag_active:
@@ -657,59 +745,48 @@ func _unhandled_input(event: InputEvent) -> void:
 							selection_stage = 1
 							select_drag_active = true
 				if select_drag_active:
-					var next_hit := _ray_hit(event.position)
-					if not next_hit.is_empty():
-						var n: Vector3 = next_hit["normal"]
+					var hit := _ray_hit(event.position)
+					if not hit.is_empty():
+						var n: Vector3 = hit["normal"]
 						if n.y > 0.8:
-							var location: Vector3 = next_hit["position"]
+							var location: Vector3 = hit["position"]
 							selection_last = Vector3i((location-n*0.01).floor())
 							update_selection_preview()
+			elif touch_dragged and camera_follow:
+				orbit_camera(event.relative)
 			elif touch_dragged:
 				pan_camera(event.relative)
 		touch_points[event.index] = event.position
 		return
 	if event is InputEventMagnifyGesture:
-		if touch_points.is_empty(): set_zoom(zoom/maxf(event.factor,0.01))
-	elif event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_RIGHT: pick_block(event.position)
-		elif event.button_index == MOUSE_BUTTON_LEFT and action_mode == "Select": pick_block(event.position)
-		elif event.button_index == MOUSE_BUTTON_WHEEL_UP: step_zoom(-1)
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN: step_zoom(1)
-	elif event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) and touch_points.is_empty():
-		if action_mode == "Select" and selection_stage > 0:
-			var hit := _ray_hit(event.position)
-			if not hit.is_empty():
-				var n: Vector3 = hit["normal"]
-				if n.y > 0.8:
-					var location: Vector3 = hit["position"]
-					selection_last = Vector3i((location-n*0.01).floor())
-					update_selection_preview()
-		else:
-			pan_camera(event.relative)
-
-func spawn_colony(spawn: Vector3i) -> void:
-	colony.initialize(spawn+Vector3i.UP)
-	colony.terrain = world
-	for i in colony.colonists.size():
-		colony.set_role(colony.colonists[i].id,ROLES[i])
-	var candidates: Array[Vector3i] = []
-	for radius in range(0,9):
-		for z in range(-radius,radius+1):
-			for x in range(-radius,radius+1):
-				if maxi(absi(x),absi(z)) != radius: continue
-				for y in range(World.HEIGHT-2,0,-1):
-					var p := Vector3i(spawn.x+x,y,spawn.z+z)
-					if world.block_at(p-Vector3i.UP) != World.Block.AIR and world.block_at(p) == World.Block.AIR and world.block_at(p+Vector3i.UP) == World.Block.AIR:
-						candidates.append(p)
-						break
-				if candidates.size() >= 3: break
-			if candidates.size() >= 3: break
-		if candidates.size() >= 3: break
-	for i in mini(candidates.size(),colony.colonists.size()):
-		var colonist = colony.colonists[i]
-		colonist.position = candidates[i]
-		var view := ColonistView.new()
-		add_child(view)
-		view.setup(colonist)
-		view.visible = false
-		colonist_views[colonist.id] = view
+		if touch_points.is_empty():
+			set_zoom(zoom/maxf(event.factor,0.01))
+	elif event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP and event.pressed:
+			step_zoom(-1)
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.pressed:
+			step_zoom(1)
+		elif event.button_index == MOUSE_BUTTON_LEFT:
+			if event.pressed:
+				mouse_start = event.position
+				mouse_dragged = false
+			elif not mouse_dragged:
+				_tap_world(event.position)
+	elif event is InputEventMouseMotion and touch_points.is_empty():
+		if (event.button_mask & MOUSE_BUTTON_MASK_RIGHT) != 0:
+			orbit_camera(event.relative)
+		elif (event.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
+			if event.position.distance_to(mouse_start) > 8.0:
+				mouse_dragged = true
+			if mouse_dragged and action_mode == "Select" and selection_stage > 0:
+				var hit := _ray_hit(event.position)
+				if not hit.is_empty():
+					var n: Vector3 = hit["normal"]
+					if n.y > 0.8:
+						var location: Vector3 = hit["position"]
+						selection_last = Vector3i((location-n*0.01).floor())
+						update_selection_preview()
+			elif mouse_dragged and camera_follow:
+				orbit_camera(event.relative)
+			elif mouse_dragged:
+				pan_camera(event.relative)
