@@ -10,7 +10,7 @@ const StockpileView = preload("res://world/stockpile_view.gd")
 const Nav = preload("res://colony/navigation.gd")
 const ResourceTypes = preload("res://colony/resource_types.gd")
 const WorkOrders = preload("res://colony/work_orders.gd")
-const TOOL_OPTIONS := ["Pan","Place","Stockpile","Inspect","Cancel","Reset Camera"]
+const TOOL_OPTIONS := ["Pan","Place","Stockpile","Inspect","Cancel","Reset Camera","New World (Backup)"]
 const CameraRig = preload("res://world/camera_rig.gd")
 const ROLES := ["Miner","Woodcutter","Hauler"]
 var colony := Colony.new()
@@ -41,6 +41,13 @@ var woodcut_markers: Dictionary = {}
 var designation_markers: Dictionary = {}
 var status: Label
 var world := World.new(123)
+# A saved world may contain thousands of edits. Copy its edit dictionary only
+# when it actually changes; never re-duplicate it for each queued 16x16 mesh.
+var _mesh_snapshot_world: World
+var _mesh_snapshot_source: World
+var _mesh_snapshot_revision := -1
+var _save_load_invalid := false
+var _new_world_dialog: ConfirmationDialog
 var chunks: Dictionary = {}
 var pending: Array[Vector2i] = []
 var focus := Vector3(8,28,8)
@@ -80,9 +87,16 @@ var pinch_reference_zoom := 32.0
 var center_chunk := Vector2i(999999,999999)
 
 func _ready() -> void:
-	if not "--world-smoke" in OS.get_cmdline_user_args():
+	var restored_ok := false
+	if not "--world-smoke" in OS.get_cmdline_user_args() and FileAccess.file_exists(SAVE_PATH):
 		var restored := Save.restore(SAVE_PATH)
-		if restored != null: world = restored
+		if restored != null:
+			world = restored
+			restored_ok = true
+		else:
+			# Never overwrite an unreadable old save during automatic saving.
+			_save_load_invalid = true
+			push_warning("VOXHAVEN: world save could not be loaded; New World (Backup) preserves it.")
 	var spawn := world.find_spawn()
 	focus = Vector3(spawn)+Vector3(0.5,1.0,0.5)
 	home_focus = focus
@@ -116,7 +130,8 @@ func _ready() -> void:
 	colony.mining.mined.connect(_on_block_mined)
 	colony.woodcut.chopped.connect(_on_tree_chopped)
 	colony.logistics.delivered.connect(_on_resources_delivered)
-	if not "--world-smoke" in OS.get_cmdline_user_args():
+	# Avoid attaching old mining/logistics tasks to a fresh seed if restore failed.
+	if restored_ok and not "--world-smoke" in OS.get_cmdline_user_args():
 		colony.mining.restore_jobs(Save.restore_mining_jobs(SAVE_PATH))
 		colony.logistics.restore(Save.restore_logistics(SAVE_PATH))
 		colony.woodcut.restore(Save.restore_woodcut(SAVE_PATH))
@@ -142,6 +157,12 @@ func _ready() -> void:
 	add_child(selection_preview)
 	var layer := CanvasLayer.new()
 	add_child(layer)
+	_new_world_dialog = ConfirmationDialog.new()
+	_new_world_dialog.title = "Start a new world?"
+	_new_world_dialog.dialog_text = "Your current world will be archived in app storage first. This does not clear other app data. Start a clean world?"
+	_new_world_dialog.ok_button_text = "Back up & start"
+	layer.add_child(_new_world_dialog)
+	_new_world_dialog.confirmed.connect(_new_world_with_backup)
 	# Compact two-row mobile toolbar; secondary actions are in popup menus.
 	# Flow containers wrap gracefully on smaller Android viewports.
 	var panel := PanelContainer.new()
@@ -228,6 +249,8 @@ func _on_tool_selected(index: int) -> void:
 		return
 	if TOOL_OPTIONS[index] == "Reset Camera":
 		reset_camera()
+	elif TOOL_OPTIONS[index] == "New World (Backup)":
+		_new_world_dialog.popup_centered()
 	else:
 		select_action(TOOL_OPTIONS[index])
 
@@ -287,7 +310,31 @@ func update_info() -> void:
 		info.text += "\n%s / %s / %s | HP %d | Stamina %d" % [c.display_name,c.job_role,c.activity,int(c.health),int(c.stamina)]
 
 func save_colony() -> bool:
+	if _save_load_invalid:
+		return false
 	return Save.save(world,SAVE_PATH,colony.mining.jobs_snapshot(),colony.logistics.snapshot(),colony.woodcut.snapshot(),colony.dig.snapshot(),colony.worker_roles())
+
+func _new_world_with_backup() -> void:
+	# Archiving is an atomic rename; don't reset unless the old save is safe.
+	if FileAccess.file_exists(SAVE_PATH):
+		var backup := Save.archive(SAVE_PATH)
+		if backup.is_empty():
+			status.text = "World backup failed: original save unchanged"
+			return
+	_save_load_invalid = false
+	get_tree().reload_current_scene()
+
+## Read-only, revision-pinned snapshots for background mesh generation.
+## The old code copied all persisted edits for EVERY queued chunk. This
+## caches one immutable copy across all chunks until terrain changes.
+func _mesh_world_snapshot() -> World:
+	if _mesh_snapshot_world == null or _mesh_snapshot_source != world or _mesh_snapshot_revision != world.edit_revision:
+		var snapshot := World.new(world.world_seed)
+		snapshot.edits = world.edits.duplicate()
+		_mesh_snapshot_world = snapshot
+		_mesh_snapshot_source = world
+		_mesh_snapshot_revision = world.edit_revision
+	return _mesh_snapshot_world
 
 func adjust_depth(direction: int) -> void:
 	dig_depth = clampi(dig_depth+direction,1,colony.dig.MAX_DEPTH)
@@ -611,8 +658,7 @@ func _process(_delta: float) -> void:
 	if not worker.is_started() and not pending.is_empty():
 		active_key = pending.pop_front()
 		active_revision = revision
-		var snapshot := World.new(world.world_seed)
-		snapshot.edits = world.edits.duplicate()
+		var snapshot := _mesh_world_snapshot()
 		if worker.start(Mesher.generate.bind(snapshot,active_key,atlas)) != OK:
 			build_chunk(active_key,Mesher.upload(Mesher.generate(snapshot,active_key,atlas)))
 	if "--world-smoke" in OS.get_cmdline_user_args() and pending.is_empty() and not worker.is_started():

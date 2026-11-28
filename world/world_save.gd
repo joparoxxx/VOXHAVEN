@@ -101,3 +101,18 @@ static func restore_worker_roles(path: String) -> Array[String]:
 		else:
 			return []
 	return result
+
+## Non-destructive recovery for incompatible/oversized old saved worlds.
+## Rename only after choosing New World; backups remain readable with restore().
+static func archive(path: String) -> String:
+	if not FileAccess.file_exists(path):
+		return ""
+	var base := path + ".backup-" + str(int(Time.get_unix_time_from_system()))
+	var destination := base
+	var serial := 1
+	while FileAccess.file_exists(destination):
+		destination = base + "-" + str(serial)
+		serial += 1
+	if DirAccess.rename_absolute(ProjectSettings.globalize_path(path),ProjectSettings.globalize_path(destination)) != OK:
+		return ""
+	return destination
