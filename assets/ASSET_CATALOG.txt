@@ -1077,3 +1077,107 @@ assets/library/kenney_fantasy-town-kit_2.0/Models/GLB format/windmill.glb
 assets/library/Quaternius_Cube_World/Environment/Tree_1.gltf
 assets/library/Quaternius_Cube_World/Environment/Tree_2.gltf
 assets/library/Quaternius_Cube_World/Environment/Tree_3.gltf
+assets/library/Quaternius_Cube_World/Animals/Cat.gltf
+assets/library/Quaternius_Cube_World/Animals/Chick.gltf
+assets/library/Quaternius_Cube_World/Animals/Chicken.gltf
+assets/library/Quaternius_Cube_World/Animals/Dog.gltf
+assets/library/Quaternius_Cube_World/Animals/Horse.gltf
+assets/library/Quaternius_Cube_World/Animals/Pig.gltf
+assets/library/Quaternius_Cube_World/Animals/Raccoon.gltf
+assets/library/Quaternius_Cube_World/Animals/Sheep.gltf
+assets/library/Quaternius_Cube_World/Animals/Wolf.gltf
+assets/library/Quaternius_Cube_World/Blocks/Block_Blank.gltf
+assets/library/Quaternius_Cube_World/Blocks/Block_Brick.gltf
+assets/library/Quaternius_Cube_World/Blocks/Block_Cheese.gltf
+assets/library/Quaternius_Cube_World/Blocks/Block_Coal.gltf
+assets/library/Quaternius_Cube_World/Blocks/Block_Crate.gltf
+assets/library/Quaternius_Cube_World/Blocks/Block_Crystal.gltf
+assets/library/Quaternius_Cube_World/Blocks/Block_Diamond.gltf
+assets/library/Quaternius_Cube_World/Blocks/Block_Dirt.gltf
+assets/library/Quaternius_Cube_World/Blocks/Block_Grass.gltf
+assets/library/Quaternius_Cube_World/Blocks/Block_GreyBricks.gltf
+assets/library/Quaternius_Cube_World/Blocks/Block_Ice.gltf
+assets/library/Quaternius_Cube_World/Blocks/Block_Metal.gltf
+assets/library/Quaternius_Cube_World/Blocks/Block_Snow.gltf
+assets/library/Quaternius_Cube_World/Blocks/Block_Stone.gltf
+assets/library/Quaternius_Cube_World/Blocks/Block_WoodPlanks.gltf
+assets/library/Quaternius_Cube_World/Characters/Character_Female_1.gltf
+assets/library/Quaternius_Cube_World/Characters/Character_Female_2.gltf
+assets/library/Quaternius_Cube_World/Characters/Character_Male_1.gltf
+assets/library/Quaternius_Cube_World/Characters/Character_Male_2.gltf
+assets/library/Quaternius_Cube_World/Enemies/Demon.gltf
+assets/library/Quaternius_Cube_World/Enemies/Giant.gltf
+assets/library/Quaternius_Cube_World/Enemies/Goblin.gltf
+assets/library/Quaternius_Cube_World/Enemies/Hedgehog.gltf
+assets/library/Quaternius_Cube_World/Enemies/Skeleton.gltf
+assets/library/Quaternius_Cube_World/Enemies/Skeleton_Armor.gltf
+assets/library/Quaternius_Cube_World/Enemies/Wizard.gltf
+assets/library/Quaternius_Cube_World/Enemies/Yeti.gltf
+assets/library/Quaternius_Cube_World/Enemies/Zombie.gltf
+assets/library/Quaternius_Cube_World/Environment/Bamboo.gltf
+assets/library/Quaternius_Cube_World/Environment/Bamboo_Mid.gltf
+assets/library/Quaternius_Cube_World/Environment/Bamboo_Small.gltf
+assets/library/Quaternius_Cube_World/Environment/Bush.gltf
+assets/library/Quaternius_Cube_World/Environment/Button.gltf
+assets/library/Quaternius_Cube_World/Environment/Cart.gltf
+assets/library/Quaternius_Cube_World/Environment/Chest_Closed.gltf
+assets/library/Quaternius_Cube_World/Environment/Chest_Open.gltf
+assets/library/Quaternius_Cube_World/Environment/Crystal_Big.gltf
+assets/library/Quaternius_Cube_World/Environment/Crystal_Small.gltf
+assets/library/Quaternius_Cube_World/Environment/DeadTree_1.gltf
+assets/library/Quaternius_Cube_World/Environment/DeadTree_2.gltf
+assets/library/Quaternius_Cube_World/Environment/DeadTree_3.gltf
+assets/library/Quaternius_Cube_World/Environment/Door_Closed.gltf
+assets/library/Quaternius_Cube_World/Environment/Fence_Center.gltf
+assets/library/Quaternius_Cube_World/Environment/Fence_Corner.gltf
+assets/library/Quaternius_Cube_World/Environment/Fence_End.gltf
+assets/library/Quaternius_Cube_World/Environment/Fence_T.gltf
+assets/library/Quaternius_Cube_World/Environment/Flowers_1.gltf
+assets/library/Quaternius_Cube_World/Environment/Flowers_2.gltf
+assets/library/Quaternius_Cube_World/Environment/Grass_Big.gltf
+assets/library/Quaternius_Cube_World/Environment/Grass_Small.gltf
+assets/library/Quaternius_Cube_World/Environment/Key.gltf
+assets/library/Quaternius_Cube_World/Environment/Lever_Left.gltf
+assets/library/Quaternius_Cube_World/Environment/Lever_Right.gltf
+assets/library/Quaternius_Cube_World/Environment/Mushroom.gltf
+assets/library/Quaternius_Cube_World/Environment/Plant_2.gltf
+assets/library/Quaternius_Cube_World/Environment/Plant_3.gltf
+assets/library/Quaternius_Cube_World/Environment/Rail_Corner.gltf
+assets/library/Quaternius_Cube_World/Environment/Rail_Incline.gltf
+assets/library/Quaternius_Cube_World/Environment/Rail_Straight.gltf
+assets/library/Quaternius_Cube_World/Environment/Rock1.gltf
+assets/library/Quaternius_Cube_World/Environment/Rock2.gltf
+assets/library/Quaternius_Cube_World/Pixel Blocks/Block_Blank.gltf
+assets/library/Quaternius_Cube_World/Pixel Blocks/Block_Square.gltf
+assets/library/Quaternius_Cube_World/Pixel Blocks/Bricks_Dark.gltf
+assets/library/Quaternius_Cube_World/Pixel Blocks/Bricks_Grey.gltf
+assets/library/Quaternius_Cube_World/Pixel Blocks/Bricks_Red.gltf
+assets/library/Quaternius_Cube_World/Pixel Blocks/Bricks_Yellow.gltf
+assets/library/Quaternius_Cube_World/Pixel Blocks/Coal.gltf
+assets/library/Quaternius_Cube_World/Pixel Blocks/Diamond.gltf
+assets/library/Quaternius_Cube_World/Pixel Blocks/Dirt.gltf
+assets/library/Quaternius_Cube_World/Pixel Blocks/Exclamation.gltf
+assets/library/Quaternius_Cube_World/Pixel Blocks/Grass.gltf
+assets/library/Quaternius_Cube_World/Pixel Blocks/Ice.gltf
+assets/library/Quaternius_Cube_World/Pixel Blocks/Leaves.gltf
+assets/library/Quaternius_Cube_World/Pixel Blocks/QuestionMark.gltf
+assets/library/Quaternius_Cube_World/Pixel Blocks/Snow.gltf
+assets/library/Quaternius_Cube_World/Pixel Blocks/Stone.gltf
+assets/library/Quaternius_Cube_World/Pixel Blocks/Wood.gltf
+assets/library/Quaternius_Cube_World/Pixel Blocks/WoodPlanks.gltf
+assets/library/Quaternius_Cube_World/Tools/Axe_Diamond.gltf
+assets/library/Quaternius_Cube_World/Tools/Axe_Gold.gltf
+assets/library/Quaternius_Cube_World/Tools/Axe_Stone.gltf
+assets/library/Quaternius_Cube_World/Tools/Axe_Wood.gltf
+assets/library/Quaternius_Cube_World/Tools/Pickaxe_Diamond.gltf
+assets/library/Quaternius_Cube_World/Tools/Pickaxe_Gold.gltf
+assets/library/Quaternius_Cube_World/Tools/Pickaxe_Stone.gltf
+assets/library/Quaternius_Cube_World/Tools/Pickaxe_Wood.gltf
+assets/library/Quaternius_Cube_World/Tools/Shovel_Diamond.gltf
+assets/library/Quaternius_Cube_World/Tools/Shovel_Gold.gltf
+assets/library/Quaternius_Cube_World/Tools/Shovel_Stone.gltf
+assets/library/Quaternius_Cube_World/Tools/Shovel_Wood.gltf
+assets/library/Quaternius_Cube_World/Tools/Sword_Diamond.gltf
+assets/library/Quaternius_Cube_World/Tools/Sword_Gold.gltf
+assets/library/Quaternius_Cube_World/Tools/Sword_Stone.gltf
+assets/library/Quaternius_Cube_World/Tools/Sword_Wood.gltf
