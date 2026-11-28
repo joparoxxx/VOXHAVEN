@@ -3,14 +3,17 @@ const Colonist = preload("res://colony/colonist_state.gd")
 const World = preload("res://world/voxel_world.gd")
 const Nav = preload("res://colony/navigation.gd")
 const Decision = preload("res://colony/decision.gd")
+const MiningJobs = preload("res://colony/mining_jobs.gd")
 var terrain: World
 const STEP := 1.0
 const MAX_STEPS := 4
 var colonists: Array[Colonist] = []
+var mining := MiningJobs.new()
 var elapsed := 0.0
 var accumulator := 0.0
 
 func initialize(spawn: Vector3i) -> void:
+	mining.reset()
 	colonists.clear()
 	elapsed = 0.0
 	accumulator = 0.0
@@ -18,6 +21,7 @@ func initialize(spawn: Vector3i) -> void:
 		colonists.append(Colonist.new(i+1,"Colonist %d" % (i+1),spawn))
 
 func advance(delta: float) -> void:
+	mining.terrain = terrain
 	accumulator += maxf(0.0,delta)
 	var steps := 0
 	while accumulator >= STEP and steps < MAX_STEPS:
@@ -30,6 +34,7 @@ func advance(delta: float) -> void:
 
 func execute(c: Colonist) -> void:
 	if not Nav.standable(terrain,c.position):
+		mining.release(c.id)
 		c.activity="Blocked"
 		c.route.clear()
 		c.actions.clear()
@@ -37,11 +42,13 @@ func execute(c: Colonist) -> void:
 	if not c.route.is_empty():
 		var p: Vector3i = c.route[0]
 		if not Nav.standable(terrain,p):
+			mining.release(c.id)
 			c.route.clear()
 			c.actions.clear()
 			return
 		for other in colonists:
 			if other != c and other.health>0.0 and other.position==p:
+				mining.release(c.id)
 				c.route.clear()
 				c.actions.clear()
 				return
@@ -49,6 +56,11 @@ func execute(c: Colonist) -> void:
 		c.stamina=maxf(0.0,c.stamina-2.0)
 		c.activity="Walking"
 		c.remember(c.position)
+		return
+	if mining.has_assignment(c.id):
+		if mining.complete(c): return
+	elif c.stamina >= 15.0 and mining.reserve(c):
+		c.activity = "Going to mine"
 		return
 	if c.actions.is_empty():
 		if elapsed<c.next_decision: return

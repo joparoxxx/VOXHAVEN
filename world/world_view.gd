@@ -19,6 +19,7 @@ var active_key := Vector2i.ZERO
 var revision := 0
 var active_revision := 0
 var place_mode := false
+var designation_markers: Dictionary = {}
 var status: Label
 var world := World.new(123)
 var chunks: Dictionary = {}
@@ -68,6 +69,12 @@ func _ready() -> void:
 	update_camera()
 	refresh_chunks()
 	spawn_colony(spawn)
+	colony.mining.terrain = world
+	colony.mining.mined.connect(_on_block_mined)
+	if not "--world-smoke" in OS.get_cmdline_user_args():
+		colony.mining.restore_jobs(Save.restore_mining_jobs(SAVE_PATH))
+		for p in colony.mining.designations:
+			show_mining_marker(p)
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	var bar := HBoxContainer.new()
@@ -86,7 +93,7 @@ func _ready() -> void:
 		bar.add_child(zoom_button)
 		zoom_button.pressed.connect(step_zoom.bind(direction))
 	status = Label.new()
-	status.text = "Mine: right click or tap terrain"
+	status.text = "Mine: tap a block to designate mining"
 	var controls := VBoxContainer.new()
 	controls.position = Vector2(16,76)
 	layer.add_child(controls)
@@ -126,17 +133,17 @@ func test_control(action: String) -> void:
 
 func update_info() -> void:
 	if info == null: return
-	info.text = "FPS: %d | Chunks: %d | Colony time: %ds" % [Engine.get_frames_per_second(),chunks.size(),int(colony.elapsed)]
+	info.text = "FPS: %d | Chunks: %d | Colony time: %ds | Mining jobs: %d | Drops: %d" % [Engine.get_frames_per_second(),chunks.size(),int(colony.elapsed),colony.mining.designations.size(),colony.mining.drops.size()]
 	if selected_index >= 0 and selected_index < colony.colonists.size():
 		var c = colony.colonists[selected_index]
 		info.text += "\n%s | %s | HP %d | Hunger %d | Thirst %d | Stamina %d | Mood %d" % [c.display_name,c.activity,int(c.health),int(c.hunger),int(c.thirst),int(c.stamina),int(c.happiness)]
 
 func select_action(action: String) -> void:
 	if action == "Save":
-		status.text = "Saved" if Save.save(world,SAVE_PATH) else "Save failed"
+		status.text = "Saved" if Save.save(world,SAVE_PATH,colony.mining.jobs_snapshot()) else "Save failed"
 	else:
 		place_mode = action == "Place"
-		status.text = action + ": right click or tap terrain"
+		status.text = "Place: tap a surface" if place_mode else "Mine: tap a block to designate mining"
 
 func pick_block(screen: Vector2) -> void:
 	var start := camera.project_ray_origin(screen)
@@ -146,8 +153,46 @@ func pick_block(screen: Vector2) -> void:
 	if hit.is_empty(): return
 	var point: Vector3 = hit.position + hit.normal*(0.01 if place_mode else -0.01)
 	var p := Vector3i(point.floor())
-	if edit_block(p,World.Block.DIRT if place_mode else World.Block.AIR):
-		status.text = "Block placed" if place_mode else "Block mined"
+	if place_mode:
+		if edit_block(p,World.Block.DIRT):
+			status.text = "Block placed"
+	elif colony.mining.designations.has(p):
+		if colony.mining.cancel(p):
+			remove_mining_marker(p)
+			status.text = "Mining cancelled"
+	elif colony.mining.designate(p):
+		show_mining_marker(p)
+		status.text = "Mining designated at %s" % str(p)
+	else:
+		status.text = "Cannot designate this block"
+
+func show_mining_marker(p: Vector3i) -> void:
+	if designation_markers.has(p):
+		return
+	var marker := MeshInstance3D.new()
+	var cube := BoxMesh.new()
+	cube.size = Vector3.ONE * 1.025
+	marker.mesh = cube
+	var overlay := StandardMaterial3D.new()
+	overlay.albedo_color = Color(1.0, 0.65, 0.1, 0.27)
+	overlay.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	overlay.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	overlay.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+	marker.material_override = overlay
+	marker.position = Vector3(p) + Vector3.ONE * 0.5
+	add_child(marker)
+	designation_markers[p] = marker
+
+func remove_mining_marker(p: Vector3i) -> void:
+	if designation_markers.has(p):
+		designation_markers[p].queue_free()
+		designation_markers.erase(p)
+
+func _on_block_mined(p: Vector3i, _block: int) -> void:
+	remove_mining_marker(p)
+	queue_chunk_rebuild(p)
+	if status != null:
+		status.text = "Colonist mined %s" % str(p)
 
 func step_zoom(direction: int) -> void:
 	set_zoom(zoom * pow(1.2,direction))
@@ -188,7 +233,7 @@ func _process(_delta: float) -> void:
 		autosave_elapsed += _delta
 		if autosave_elapsed >= 60.0:
 			autosave_elapsed = 0.0
-			if not Save.save(world,SAVE_PATH): status.text = "Autosave failed"
+			if not Save.save(world,SAVE_PATH,colony.mining.jobs_snapshot()): status.text = "Autosave failed"
 	for colonist in colony.colonists:
 		if colonist_views.has(colonist.id):
 			var view = colonist_views[colonist.id]
@@ -231,12 +276,17 @@ func build_chunk(key: Vector2i, mesh: ArrayMesh) -> void:
 
 func edit_block(p: Vector3i, block: int) -> bool:
 	if not world.set_block(p,block): return false
+	if colony.mining.cancel(p):
+		remove_mining_marker(p)
+	queue_chunk_rebuild(p)
+	return true
+
+func queue_chunk_rebuild(p: Vector3i) -> void:
 	revision += 1
 	var key := world.chunk_of(p)
 	for offset in [Vector2i.ZERO,Vector2i.LEFT,Vector2i.RIGHT,Vector2i.UP,Vector2i.DOWN]:
 		var affected: Vector2i = key+offset
 		if chunks.has(affected) and not pending.has(affected): pending.append(affected)
-	return true
 
 var touch_points: Dictionary = {}
 var touch_start := Vector2.ZERO

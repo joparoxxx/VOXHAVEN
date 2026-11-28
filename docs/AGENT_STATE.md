@@ -10,3 +10,9 @@
 - Pending CI validation: model imports, atlas face UVs, scene smoke, animation playback and Android package export. Godot 4.5.1 binary is not installed in assistant's current working container; workflows have not yet been observed passing on these new commits.
 - Current roadmap: Phase 4.0 asset integration in progress. Phase 4.1 block designation and Phase 4.2 autonomous mining are NOT implemented on this branch; do not imply other branches' gameplay code was merged.
 - Continue on this branch, inspect Godot validation logs and repair failing import/UV/animation code before starting mining. Verify actual APK artifact and physical-device performance separately.
+
+## 2026-11-28 Phase 4.1/4.2 implementation (pending CI)
+- Branch: game/colony-foundation. New colony/mining_jobs.gd: solid-block mining designations, exclusive colonist reservations, bounded path-to-adjacent-work-cell selection, cancellation, completion, basic unhauled drops.
+- Integrated jobs into colony fixed-step simulator and world_view: mining targets are highlighted, tapped again to cancel, completed jobs trigger chunk remeshing via a simulation signal.
+- World save version 1 remains backward-compatible; optional mining_designations records persist queued work, restored on game load. Added tests/mining_jobs_test.gd and validation workflow step.
+- Scope: this is a first autonomous mining vertical slice, not woodcutting, hauling, physical resource entities, or construction. No Godot runtime/Android build success claim until CI verifies the commit. Previously-running CI for 8e4de7d does not validate these changes.

@@ -43,7 +43,7 @@ No cloud AI, Gemini, external LLM, API key or mandatory network connection is re
 | Asset lab and smoke tests | Implemented; validation pending |
 | Android export preset | Configured; APK build unverified |
 | Procedural world and colony simulation | Prototype implemented on game/colony-foundation; runtime validation pending |
-| Gameplay and device profiling | Pending |
+| Gameplay and device profiling | Phase 4.1 mining designations and autonomous mining prototype implemented; CI pending |
 
 The asset count includes animation files and does not represent unique meshes. See the [asset catalog](assets/ASSET_CATALOG.txt) and [credits](assets/CREDITS.md) for inventory and attribution. Preserve bundled third-party licenses; the asset licenses do not establish a license for the entire game.
 
@@ -65,6 +65,8 @@ See the [foundation notes](https://github.com/joparoxxx/VOXHAVEN/blob/game/colon
 The `game/colony-foundation` branch contains all 107 Cube World GLTF files and both atlas textures. Colonists now cycle through four humanoid variants with embedded Idle and Walk animations. Terrain meshes reference Cube World's pixel block atlas; terrain variants without dedicated texture tiles reuse and tint verified Cube World pixels. This is a visual prototype, not final biome or ore artwork.
 
 Godot import, scene smoke, animation runtime and APK output for these new commits are pending workflow validation; do not treat code inspection as a completed build.
+
+A first mining-job vertical slice now lets players designate solid blocks for colonists to mine. Work reservations, safe-adjacent stand positions, pending designation persistence and unhauled drops are in progress and require CI verification. Woodcutting, hauling and storage are not implemented.
 
 ## Roadmap
 
