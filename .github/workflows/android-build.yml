@@ -77,24 +77,41 @@ jobs:
         with:
           path: ~/.local/share/godot/export_templates/4.5.1.stable
           key: godot-templates-4.5.1
+      # Debug-only signer. A fresh random key for EVERY build makes Android refuse
+      # upgrades: INSTALL_FAILED_UPDATE_INCOMPATIBLE. Cache and reuse one key.
+      # Cache eviction may still require reinstalling; release signing must use
+      # separately managed credentials, NEVER this QA-only debug key.
+      - uses: actions/cache/restore@v4
+        id: debug-key-cache
+        with:
+          path: ~/.android/voxhaven-qa.keystore
+          key: voxhaven-qa-debug-signing-v1
       - name: Configure debug signing
         run: |
+          set -euo pipefail
           mkdir -p "$HOME/.android" "$HOME/.config/godot"
           test -f "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable/android_debug.apk"
           test -x "$JAVA_HOME/bin/java"
           test -x "$ANDROID_HOME/build-tools/35.0.0/apksigner"
-          rm -f "$HOME/.android/debug.keystore"
-          keytool -genkeypair -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
+          if [ ! -s "$HOME/.android/voxhaven-qa.keystore" ]; then
+            keytool -genkeypair -keystore "$HOME/.android/voxhaven-qa.keystore" -storepass android -alias androiddebugkey -keypass android -dname "CN=Voxhaven Debug QA,O=Voxhaven,C=PH" -keyalg RSA -keysize 2048 -validity 10000
+          fi
+          keytool -list -v -keystore "$HOME/.android/voxhaven-qa.keystore" -storepass android -alias androiddebugkey | grep -E 'SHA256:|Alias name:'
           cat > "$HOME/.config/godot/editor_settings-4.5.tres" <<EOF
           [gd_resource type="EditorSettings" format=3]
           [resource]
           export/android/java_sdk_path = "$JAVA_HOME"
           export/android/android_sdk_path = "$ANDROID_HOME"
-          export/android/debug_keystore = "$HOME/.android/debug.keystore"
+          export/android/debug_keystore = "$HOME/.android/voxhaven-qa.keystore"
           export/android/debug_keystore_user = "androiddebugkey"
           export/android/debug_keystore_pass = "android"
           export/android/force_system_user = false
           EOF
+      - uses: actions/cache/save@v4
+        if: steps.debug-key-cache.outputs.cache-hit != 'true'
+        with:
+          path: ~/.android/voxhaven-qa.keystore
+          key: voxhaven-qa-debug-signing-v1
       - name: Import project
         run: |
           set -o pipefail
@@ -109,7 +126,7 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p build
-          export GODOT_ANDROID_KEYSTORE_DEBUG_PATH="$HOME/.android/debug.keystore"
+          export GODOT_ANDROID_KEYSTORE_DEBUG_PATH="$HOME/.android/voxhaven-qa.keystore"
           export GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey
           export GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android
           godot --headless --verbose --path . --export-debug Android build/voxhaven-debug.apk 2>&1 | tee export.log
@@ -117,7 +134,9 @@ jobs:
           if grep -E 'SCRIPT ERROR:|ERROR:' export.log; then exit 1; fi
       - name: Verify APK
         run: |
+          unzip -tq build/voxhaven-debug.apk
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose build/voxhaven-debug.apk
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging build/voxhaven-debug.apk | grep -E "^(package:|sdkVersion:|targetSdkVersion:|native-code:)"
           unzip -l build/voxhaven-debug.apk | grep 'lib/arm64-v8a/libgodot_android.so'
       - uses: actions/upload-artifact@v4
         with:
