@@ -23,7 +23,7 @@ Voxhaven is a **work-in-progress, fully offline 3D colony simulator for Android*
 | World streaming | Exposed-face chunk meshes, collision, bounded chunk loading, background CPU mesh generation, terrain edits | Threading and rendering need full Godot / Android testing |
 | Cube World art | 107 GLTF models and two atlas images; four humanoid character variants; softened Cube World pixel-textured blocks; scaled low-poly forest trees | Godot CI passed; device screenshot comparison remains pending |
 | Colonists | Three simulated colonists with health, hunger, thirst, stamina, local memory, bounded navigation and simple utility-driven behavior | Needs/AI are prototypes, not a complete survival system |
-| Mining designations | Tap a solid block in Mine mode to mark or cancel it; exclusive job reservation and path-to-work behavior | Mining execution and navigation edge cases are pending test results |
+| Mining and excavation | Single-block Mine, drag/two-tap Select, bounded Dig Depth (1–8), staged shallow-first area mining with save/load | Deep pits may require accessible ramps or stairs; full underground pathfinding is not implemented |
 | Resources | Mining and tree chopping create distinct stone/block and wood resource records | Resource drops are still logical records rather than world item meshes |
 | Hauling and storage | Autonomous pickup/delivery to a visible Cube World crate stockpile with relocatable ground pad and per-resource counts | Initial prototype has one stockpile and no capacity, building, or full inventory UI |
 | Save/load | Seed, terrain edits, mining/woodcut designations, felled-tree state, unhauled items, stock and stockpile position | Colonist state and full simulation recovery remain pending |
@@ -106,6 +106,16 @@ These are commands to **run**, not claims that the latest commit has passed them
 - **Colonists:** cycle the selected colonist and inspect basic needs/status; use the simulation-speed button to pause or accelerate time.
 
 The UI and multitouch input are prototypes; physical Android device testing remains outstanding.
+
+## Select, Dig and editing tools
+
+The mobile toolbar now includes **Pan, Select, Dig, Chop Area, Mine, Chop, Stockpile, Place, Inspect, Cancel, Save**, and camera zoom controls.
+
+1. Tap **Select**, then touch two top-face corners of the area, or drag one finger across the ground. The translucent preview shows the footprint; amber warns when too large.
+2. Use **Depth - / Depth +** to choose **1–8 block layers downward**. Tap **Dig** to queue the selected ground columns. Each selection is capped at **64 cells** (and at most 64 managed columns total); only 12 mining jobs are active simultaneously.
+3. The planner queues accessible surface layers before deeper ones. Mining remains a physical colonist activity—**it does not instantly remove terrain**. Deep/vertical pits can pause when no walkable route exists. A future stair/ramp tool is required for guaranteed deep excavation.
+4. **Chop Area** designates trees within a selection; **Inspect** shows block coordinates/type; **Cancel** cancels tasks across a selection, or lets you tap an individual designation. **Pan** restores single-finger camera drag. Existing Mine, Chop, Stockpile, Place, Save and camera controls remain.
+5. Excavation goals and current mining designations are saved in the local version-1-compatible world file. The visual selection itself is temporary.
 
 ## Continuous colonist movement (development)
 

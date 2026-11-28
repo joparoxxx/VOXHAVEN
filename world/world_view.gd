@@ -280,6 +280,15 @@ func _cancel_area() -> void:
 		action_mode = "Cancel"
 		status.text = "Cancel: tap a mining designation or tree base"
 		return
+	# The planner removes owned jobs, so clear their marker nodes first.
+	var x0_pending := mini(selection_first.x,selection_last.x)
+	var x1_pending := maxi(selection_first.x,selection_last.x)
+	var z0_pending := mini(selection_first.z,selection_last.z)
+	var z1_pending := maxi(selection_first.z,selection_last.z)
+	for key in colony.dig.owned.keys():
+		var p: Vector3i = key
+		if p.x>=x0_pending and p.x<=x1_pending and p.z>=z0_pending and p.z<=z1_pending:
+			remove_mining_marker(p)
 	var count := colony.dig.cancel_area(selection_first,selection_last)
 	var x0 := mini(selection_first.x,selection_last.x)
 	var x1 := maxi(selection_first.x,selection_last.x)
@@ -340,6 +349,10 @@ func pick_block(screen: Vector2) -> void:
 			var block := world.block_at(p)
 			status.text = "%s at %s | Surface y=%d" % [str(World.Block.keys()[block]),str(p),world.surface_at(p.x,p.z)]
 		"Cancel":
+			for key in colony.dig.owned.keys():
+				var target: Vector3i = key
+				if target.x == p.x and target.z == p.z:
+					remove_mining_marker(target)
 			var count := colony.dig.cancel_area(p,p)
 			var mined := colony.mining.cancel(p)
 			var tree := p + Vector3i.UP

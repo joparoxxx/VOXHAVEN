@@ -43,8 +43,13 @@ func request_area(first: Vector3i, last: Vector3i, depth: int) -> int:
  for z in range(min_z,max_z+1):
   for x in range(min_x,max_x+1):
    var key := Vector2i(x,z)
-   var surface := maxi(terrain.surface_at(x,z),maxi(first.y,last.y))
-   surface = mini(surface,World.HEIGHT-2)
+   # Each column uses its own exposed surface height; slopes should not
+   # become empty goals just because the second selection corner is higher.
+   var surface := mini(maxi(terrain.surface_at(x,z),maxi(first.y,last.y)),World.HEIGHT-2)
+   while surface > 0 and terrain.block_at(Vector3i(x,surface,z)) == World.Block.AIR:
+    surface -= 1
+   if surface <= 0:
+    continue
    var floor_y := maxi(1,surface-depth+1)
    if columns.has(key):
     var existing: Dictionary = columns[key]

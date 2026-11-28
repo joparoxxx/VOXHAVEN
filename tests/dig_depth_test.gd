@@ -35,6 +35,12 @@ func _initialize() -> void:
  ok = ok and colony.mining.designations.has(Vector3i(2,47,2))
  # Planner must keep the request bounded and preserve lower tiers for later.
  ok = ok and colony.dig.active.size() <= colony.dig.MAX_ACTIVE
+ # Different column heights must be detected from the actual topmost block.
+ world.set_block(Vector3i(3,49,2),World.Block.AIR)
+ world.set_block(Vector3i(3,48,2),World.Block.AIR)
+ colony.dig.cancel_area(Vector3i(3,49,2),Vector3i(3,49,2))
+ ok = ok and colony.dig.request_area(Vector3i(3,49,2),Vector3i(3,49,2),3) == 1
+ ok = ok and int(colony.dig.columns[Vector2i(3,2)]["top"]) == 47
  var path := "user://voxhaven-depth-test.json"
  ok = ok and Save.save(world,path,colony.mining.jobs_snapshot(),{}, {},colony.dig.snapshot())
  var restored := Save.restore(path)
