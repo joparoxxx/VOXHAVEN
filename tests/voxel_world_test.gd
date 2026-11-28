@@ -18,5 +18,25 @@ func _initialize() -> void:
 	ok = ok and not a.set_block(Vector3i(0, -1, 0), World.Block.STONE)
 	var data := a.generate_chunk(Vector2i(-1, 0))
 	ok = ok and data[(p.y * 16) * 16 + 15] == World.Block.AIR
+	# The optimized chunk generator must match the procedural block_at
+	# reference exactly, including negative chunk coordinates and terrain edits.
+	# Performance work cannot alter seed, caves, ore, biome or the 16x16 layout.
+	var mismatch := ""
+	for key in [Vector2i.ZERO,Vector2i(-1,2)]:
+		var generated := a.generate_chunk(key)
+		for y in World.HEIGHT:
+			for z in World.CHUNK_SIZE:
+				for x in World.CHUNK_SIZE:
+					var index := (y*World.CHUNK_SIZE+z)*World.CHUNK_SIZE+x
+					var global_cell := Vector3i(key.x*World.CHUNK_SIZE+x,y,key.y*World.CHUNK_SIZE+z)
+					if int(generated[index]) != a.block_at(global_cell):
+						ok = false
+						mismatch = str(global_cell)
+						break
+				if not ok: break
+			if not ok: break
+		if not ok: break
+	if not ok:
+		print("Chunk-vs-block reference mismatch: ",mismatch)
 	print("Voxel data test: ", "PASS" if ok else "FAIL")
 	quit(0 if ok else 1)
