@@ -45,7 +45,7 @@ func _initialize() -> void:
   if colony.logistics.stored_units() >= 1:
    break
   colony.advance(1.0)
- var delivered := colony.logistics.inventory.get(World.Block.STONE, 0) == 1
+ var delivered: bool = int(colony.logistics.inventory.get(World.Block.STONE, 0)) == 1
  ok = ok and delivered
  ok = ok and colony.logistics.unhauled_units() == 0
  ok = ok and colony.logistics.carried.is_empty()
