@@ -22,6 +22,13 @@ var active_key := Vector2i.ZERO
 var revision := 0
 var active_revision := 0
 var action_mode := "Mine"
+var dig_depth := 2
+var depth_label: Label
+var selection_first := Vector3i.ZERO
+var selection_last := Vector3i.ZERO
+var selection_stage := 0
+var selection_preview: MeshInstance3D
+var select_drag_active := false
 var stockpile_view: StockpileView
 var woodcut_markers: Dictionary = {}
 var designation_markers: Dictionary = {}
@@ -76,6 +83,8 @@ func _ready() -> void:
 	spawn_colony(spawn)
 	colony.mining.terrain = world
 	colony.woodcut.terrain = world
+	colony.dig.terrain = world
+	colony.dig.queued.connect(show_mining_marker)
 	colony.mining.mined.connect(_on_block_mined)
 	colony.woodcut.chopped.connect(_on_tree_chopped)
 	colony.logistics.delivered.connect(_on_resources_delivered)
@@ -83,6 +92,7 @@ func _ready() -> void:
 		colony.mining.restore_jobs(Save.restore_mining_jobs(SAVE_PATH))
 		colony.logistics.restore(Save.restore_logistics(SAVE_PATH))
 		colony.woodcut.restore(Save.restore_woodcut(SAVE_PATH))
+		colony.dig.restore(Save.restore_dig(SAVE_PATH))
 		for p in colony.mining.designations:
 			show_mining_marker(p)
 		for p in colony.woodcut.designations:
@@ -90,15 +100,24 @@ func _ready() -> void:
 	stockpile_view = StockpileView.new()
 	add_child(stockpile_view)
 	refresh_stockpile()
+	selection_preview = MeshInstance3D.new()
+	selection_preview.mesh = BoxMesh.new()
+	var selection_material := StandardMaterial3D.new()
+	selection_material.albedo_color = Color(0.2,0.72,1.0,0.35)
+	selection_material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	selection_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	selection_preview.material_override = selection_material
+	selection_preview.visible = false
+	add_child(selection_preview)
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	var bar := HBoxContainer.new()
 	bar.position = Vector2(16,16)
 	layer.add_child(bar)
-	for title in ["Mine","Chop","Stockpile","Place","Save"]:
+	for title in ["Pan","Select","Dig","Chop Area","Mine","Chop","Stockpile","Place","Inspect","Cancel","Save"]:
 		var button := Button.new()
 		button.text = title
-		button.custom_minimum_size = Vector2(90,48)
+		button.custom_minimum_size = Vector2(82,48)
 		bar.add_child(button)
 		button.pressed.connect(select_action.bind(title))
 	for direction in [-1,1]:
@@ -121,6 +140,19 @@ func _ready() -> void:
 		camera_bar.add_child(button)
 		button.pressed.connect(test_control.bind(title))
 		if title == "1x": speed_button = button
+	var depth_controls := HBoxContainer.new()
+	controls.add_child(depth_controls)
+	for step in [-1,1]:
+		var control := Button.new()
+		control.text = "Depth -" if step < 0 else "Depth +"
+		control.custom_minimum_size = Vector2(92,42)
+		depth_controls.add_child(control)
+		control.pressed.connect(adjust_depth.bind(step))
+		if step < 0:
+			depth_label = Label.new()
+			depth_label.text = "Dig depth: %d" % dig_depth
+			depth_label.custom_minimum_size = Vector2(120,42)
+			depth_controls.add_child(depth_label)
 	controls.add_child(status)
 	info = Label.new()
 	info.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -148,36 +180,174 @@ func test_control(action: String) -> void:
 
 func update_info() -> void:
 	if info == null: return
-	info.text = "FPS: %d | Chunks: %d | Colony time: %ds | Mining jobs: %d | Trees: %d | Drops: %d | Stock: %d" % [Engine.get_frames_per_second(),chunks.size(),int(colony.elapsed),colony.mining.designations.size(),colony.woodcut.designations.size(),colony.logistics.unhauled_units(),colony.logistics.stored_units()]
+	info.text = "FPS: %d | Chunks: %d | Colony time: %ds | Mining: %d | Excavations: %d | Trees: %d | Drops: %d | Stock: %d" % [Engine.get_frames_per_second(),chunks.size(),int(colony.elapsed),colony.mining.designations.size(),colony.dig.columns.size(),colony.woodcut.designations.size(),colony.logistics.unhauled_units(),colony.logistics.stored_units()]
 	if selected_index >= 0 and selected_index < colony.colonists.size():
 		var c = colony.colonists[selected_index]
 		info.text += "\n%s | %s | HP %d | Hunger %d | Thirst %d | Stamina %d | Mood %d" % [c.display_name,c.activity,int(c.health),int(c.hunger),int(c.thirst),int(c.stamina),int(c.happiness)]
 
 func save_colony() -> bool:
-	return Save.save(world,SAVE_PATH,colony.mining.jobs_snapshot(),colony.logistics.snapshot(),colony.woodcut.snapshot())
+	return Save.save(world,SAVE_PATH,colony.mining.jobs_snapshot(),colony.logistics.snapshot(),colony.woodcut.snapshot(),colony.dig.snapshot())
+
+func adjust_depth(direction: int) -> void:
+	dig_depth = clampi(dig_depth+direction,1,colony.dig.MAX_DEPTH)
+	depth_label.text = "Dig depth: %d" % dig_depth
+
+func clear_selection() -> void:
+	selection_stage = 0
+	if selection_preview != null:
+		selection_preview.visible = false
+
+func selection_count() -> int:
+	if selection_stage == 0:
+		return 0
+	return (absi(selection_first.x-selection_last.x)+1)*(absi(selection_first.z-selection_last.z)+1)
+
+func update_selection_preview() -> void:
+	if selection_preview == null:
+		return
+	selection_preview.visible = selection_stage != 0
+	if selection_stage == 0:
+		return
+	var x0 := mini(selection_first.x,selection_last.x)
+	var x1 := maxi(selection_first.x,selection_last.x)
+	var z0 := mini(selection_first.z,selection_last.z)
+	var z1 := maxi(selection_first.z,selection_last.z)
+	var mesh := selection_preview.mesh as BoxMesh
+	mesh.size = Vector3(float(x1-x0+1),0.055,float(z1-z0+1))
+	selection_preview.position = Vector3(float(x0+x1+1)*0.5,float(maxi(selection_first.y,selection_last.y))+1.08,float(z0+z1+1)*0.5)
+	var paint := selection_preview.material_override as StandardMaterial3D
+	paint.albedo_color = Color(1.0,0.42,0.1,0.4) if selection_count()>colony.dig.MAX_COLUMNS else Color(0.2,0.72,1.0,0.35)
+
+func _record_selection(p: Vector3i) -> void:
+	if selection_stage != 1:
+		selection_first = p
+		selection_last = p
+		selection_stage = 1
+	else:
+		selection_last = p
+		selection_stage = 2
+	update_selection_preview()
+	status.text = "Selected: %d columns | Dig depth: %d" % [selection_count(),dig_depth]
+
+func _ray_hit(screen: Vector2) -> Dictionary:
+	var origin := camera.project_ray_origin(screen)
+	return get_world_3d().direct_space_state.intersect_ray(PhysicsRayQueryParameters3D.create(origin,origin+camera.project_ray_normal(screen)*200.0))
+
+func _select_screen(screen: Vector2) -> void:
+	var hit := _ray_hit(screen)
+	if hit.is_empty():
+		return
+	var normal: Vector3 = hit["normal"]
+	if normal.y < 0.8:
+		status.text = "Select the top face of ground blocks"
+		return
+	var point: Vector3 = hit["position"]
+	_record_selection(Vector3i((point-normal*0.01).floor()))
+
+func _dig_selected() -> void:
+	if selection_stage == 0:
+		status.text = "Select an area first (two corners)"
+		return
+	var count := colony.dig.request_area(selection_first,selection_last,dig_depth)
+	if count <= 0:
+		status.text = "Dig area too large (max 64 blocks), or planner full"
+		return
+	status.text = "Dig queued: %d columns x %d layers" % [count,dig_depth]
+	clear_selection()
+	action_mode = "Select"
+
+func _chop_area() -> void:
+	if selection_stage == 0 or selection_count()>colony.dig.MAX_COLUMNS:
+		status.text = "Select up to 64 ground cells first"
+		return
+	var x0 := mini(selection_first.x,selection_last.x)
+	var x1 := maxi(selection_first.x,selection_last.x)
+	var z0 := mini(selection_first.z,selection_last.z)
+	var z1 := maxi(selection_first.z,selection_last.z)
+	var marked := 0
+	for cz in range(floori(float(z0)/16.0),floori(float(z1)/16.0)+1):
+		for cx in range(floori(float(x0)/16.0),floori(float(x1)/16.0)+1):
+			for p in Decor.tree_positions(world,Vector2i(cx,cz),colony.woodcut.harvested):
+				if p.x>=x0 and p.x<=x1 and p.z>=z0 and p.z<=z1 and colony.woodcut.designate(p):
+					show_woodcut_marker(p)
+					marked += 1
+	status.text = "Chop Area marked %d trees" % marked
+	clear_selection()
+	action_mode = "Select"
+
+func _cancel_area() -> void:
+	if selection_stage == 0:
+		action_mode = "Cancel"
+		status.text = "Cancel: tap a mining designation or tree base"
+		return
+	var count := colony.dig.cancel_area(selection_first,selection_last)
+	var x0 := mini(selection_first.x,selection_last.x)
+	var x1 := maxi(selection_first.x,selection_last.x)
+	var z0 := mini(selection_first.z,selection_last.z)
+	var z1 := maxi(selection_first.z,selection_last.z)
+	for key in colony.mining.designations.keys():
+		var p: Vector3i = key
+		if p.x>=x0 and p.x<=x1 and p.z>=z0 and p.z<=z1:
+			colony.mining.cancel(p)
+			remove_mining_marker(p)
+	for key in colony.woodcut.designations.keys():
+		var p: Vector3i = key
+		if p.x>=x0 and p.x<=x1 and p.z>=z0 and p.z<=z1:
+			colony.woodcut.cancel(p)
+			remove_woodcut_marker(p)
+	status.text = "Cancelled %d excavation columns and work in area" % count
+	clear_selection()
+	action_mode = "Select"
 
 func select_action(action: String) -> void:
-	if action == "Save":
-		status.text = "Saved" if save_colony() else "Save failed"
-		return
+	match action:
+		"Save":
+			status.text = "Saved" if save_colony() else "Save failed"
+			return
+		"Dig":
+			_dig_selected()
+			return
+		"Chop Area":
+			_chop_area()
+			return
+		"Cancel":
+			_cancel_area()
+			return
 	action_mode = action
 	match action:
+		"Pan": status.text = "Pan: drag to move the camera"
+		"Select": status.text = "Select: tap two ground corners, then Dig"
 		"Mine": status.text = "Mine: tap a solid block"
-		"Chop": status.text = "Chop: tap the ground below a tree; tap again to cancel"
-		"Stockpile": status.text = "Stockpile: tap a walkable ground tile"
-		"Place": status.text = "Place: tap a surface to place dirt"
+		"Chop": status.text = "Chop: tap the ground below a tree"
+		"Stockpile": status.text = "Stockpile: tap walkable ground"
+		"Place": status.text = "Place: tap a surface"
+		"Inspect": status.text = "Inspect: tap any block"
 
 func pick_block(screen: Vector2) -> void:
-	var start := camera.project_ray_origin(screen)
-	var end := start + camera.project_ray_normal(screen)*200.0
-	var query := PhysicsRayQueryParameters3D.create(start,end)
-	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	if action_mode == "Pan":
+		return
+	if action_mode == "Select":
+		_select_screen(screen)
+		return
+	var hit := _ray_hit(screen)
 	if hit.is_empty():
 		return
 	var placing := action_mode == "Place" or action_mode == "Stockpile"
 	var point: Vector3 = hit.position + hit.normal * (0.01 if placing else -0.01)
 	var p := Vector3i(point.floor())
 	match action_mode:
+		"Inspect":
+			var block := world.block_at(p)
+			status.text = "%s at %s | Surface y=%d" % [str(World.Block.keys()[block]),str(p),world.surface_at(p.x,p.z)]
+		"Cancel":
+			var count := colony.dig.cancel_area(p,p)
+			var mined := colony.mining.cancel(p)
+			var tree := p + Vector3i.UP
+			var chopped := colony.woodcut.cancel(tree)
+			remove_mining_marker(p)
+			if chopped:
+				remove_woodcut_marker(tree)
+			status.text = "Cancelled %d dig columns; mining %s, tree %s" % [count,str(mined),str(chopped)]
 		"Place":
 			if edit_block(p,World.Block.DIRT):
 				status.text = "Block placed"
