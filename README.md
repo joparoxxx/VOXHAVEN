@@ -108,6 +108,15 @@ These are commands to **run**, not claims that the latest commit has passed them
 
 The UI and multitouch input are prototypes; physical Android device testing remains outstanding.
 
+
+### Mining order, falling workers and full camera control
+
+- **Strict top-down excavation** — the planner processes the highest remaining exposed blocks across a selected excavation before queuing any lower block. The 12-job active limit remains; deep mining waits while any upper layer is unfinished.
+- **Support-aware colonists** — whenever terrain below a living worker is mined away, the simulation finds the next lower solid-supported floor. It releases invalid reservations, re-paths on subsequent ticks and animates the fall instead of leaving the character suspended.
+- **Camera Follow switch:** `Follow OFF` allows single-finger free panning. Switch **ON** to orbit with one finger (horizontal yaw, vertical pitch) and track the selected colonist. Tapping another colonist switches the tracked worker; tapping terrain smoothly moves the orbit focus to that location, while the active gameplay tool can still designate work.
+- **Both modes:** two-finger pan and pinch zoom; desktop right-drag orbit, left-drag pan or select, mouse wheel zoom. **Tools → Reset Camera** restores the initial angle and position; the old Rotate L / Rotate R buttons are removed. Pitch/zoom are bounded to prevent flipped or lost camera views.
+- Passing automated tests for these changes are required before calling them validated. Android touch gestures, physics impressions and framerate still need real-device review.
+
 ## Compact tools and single Mine workflow
 
 The Android toolbar now keeps **Mine**, **Select**, **Tools**, **Worker**, **Job**, **Camera**, and **Save** together, with smaller controls for depth, zoom and simulation speed. Secondary actions (**Pan, Place, Stockpile, Inspect, Cancel**) live in the Tools menu; camera rotation, reset and focus live in the Camera menu. Independent Dig/Chop/Chop Area buttons have been removed.
