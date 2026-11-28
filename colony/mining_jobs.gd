@@ -12,6 +12,7 @@ signal mined(position: Vector3i, block: int)
 
 var terrain: World
 var harvested_trees: Dictionary = {} # Shared live set of already-felled trees
+var workers: Array[Colonist] = [] # Live colonist positions; owned by colony simulation
 var designations: Dictionary = {} # Vector3i -> worker id (0 = available)
 var assignments: Dictionary = {} # worker id -> Vector3i
 var work_positions: Dictionary = {} # worker id -> safe adjacent standing cell
@@ -23,15 +24,36 @@ func reset() -> void:
  work_positions.clear()
  drops.clear()
 
-func is_tree_base(p: Vector3i) -> bool:
- # Real trees are deterministic decorations above their supporting grass.
- # Never uproot a standing tree by mining or by a queued excavation.
- if terrain == null or p.y != terrain.surface_at(p.x,p.z):
+## A standing Cube World tree protects its entire vertical column below
+## the tree, not just the surface grass block. The grid precheck avoids
+## scanning decorative trees for most ordinary mining coordinates.
+func is_tree_above(p: Vector3i) -> bool:
+ if terrain == null:
   return false
- return Decor.tree_positions(terrain,terrain.chunk_of(p),harvested_trees).has(p+Vector3i.UP)
+ if posmod(p.x,World.CHUNK_SIZE) % 4 != 2 or posmod(p.z,World.CHUNK_SIZE) % 4 != 2:
+  return false
+ var top := terrain.surface_at(p.x,p.z)
+ if p.y > top:
+  return false
+ var support := Vector3i(p.x,top,p.z)
+ return Decor.tree_positions(terrain,terrain.chunk_of(support),harvested_trees).has(support+Vector3i.UP)
+
+func is_tree_base(p: Vector3i) -> bool:
+ return terrain != null and p.y == terrain.surface_at(p.x,p.z) and is_tree_above(p)
+
+## Never remove a voxel at any depth below a living colonist. Include
+## deep mining: cutting beneath the worker's feet can strand them later.
+func is_worker_above(p: Vector3i) -> bool:
+ for c in workers:
+  if c.health > 0.0 and c.position.x == p.x and c.position.z == p.z and c.position.y > p.y:
+   return true
+ return false
+
+func is_protected(p: Vector3i) -> bool:
+ return is_worker_above(p) or is_tree_above(p)
 
 func designate(p: Vector3i) -> bool:
- if terrain == null or designations.has(p) or designations.size() >= MAX_JOBS or is_tree_base(p):
+ if terrain == null or designations.has(p) or designations.size() >= MAX_JOBS or is_protected(p):
   return false
  if terrain.block_at(p) == World.Block.AIR:
   return false
@@ -81,10 +103,13 @@ func reserve(c: Colonist) -> bool:
   var p: Vector3i = key
   if int(designations[p]) != 0:
    continue
-  inspected += 1
-  if terrain.block_at(p) == World.Block.AIR or is_tree_base(p):
+  if terrain.block_at(p) == World.Block.AIR:
    cancel(p)
    continue
+  # Keep saved/pending jobs, but do not reserve them while occupied.
+  if is_protected(p):
+   continue
+  inspected += 1
   var chosen := Vector3i.ZERO
   var route: Array[Vector3i] = []
   var found := false
@@ -123,8 +148,13 @@ func complete(c: Colonist) -> bool:
   release(c.id)
   return false
  var block := terrain.block_at(p)
- if block == World.Block.AIR or is_tree_base(p):
+ if block == World.Block.AIR:
   cancel(p)
+  return false
+ # Last-moment guard: an occupant may have walked onto the block
+ # after this mining job was reserved or while the mining animation ran.
+ if is_protected(p):
+  release(c.id)
   return false
  if not terrain.set_block(p, World.Block.AIR):
   release(c.id)

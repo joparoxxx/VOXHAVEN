@@ -15,6 +15,10 @@ static func single(world: World, mining: Mining, woodcut: Woodcut, dig: Dig, p: 
 		if woodcut.designate(tree):
 			return {"job":"tree","message":"Tree marked for woodcutting"}
 		return {"job":"none","message":"Cannot assign this tree"}
+	if mining.is_worker_above(p):
+		return {"job":"none","message":"Cannot mine below a colonist"}
+	if mining.is_tree_above(p):
+		return {"job":"none","message":"Tree above: cut the tree first"}
 	if depth == 1:
 		if mining.designations.has(p):
 			mining.cancel(p)

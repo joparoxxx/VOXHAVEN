@@ -50,8 +50,6 @@ func sync_state(state: State,delta: float) -> void:
 	# Play a job motion until the timed job finishes, not just a single still frame.
 	if state.activity == "Mining" or state.activity == "Chopping":
 		_play_motion("Punch")
-	elif state.activity == "Falling" or target.y < position.y - 0.05:
-		_play_motion("Idle")
 	elif state.activity == "Carrying resources":
 		_play_motion("Walk_Hold" if moving else "Idle_Hold")
 	elif moving or (not state.route.is_empty() and state.activity != "Yielding path"):
@@ -59,8 +57,6 @@ func sync_state(state: State,delta: float) -> void:
 		_play_motion("Walk")
 	else:
 		_play_motion("Idle")
-	# Smoothly descend toward the lower floor; don't snap several voxels down.
-	var falling := target.y < position.y - 0.05
-	var move_speed: float = maxf(9.0,(position.y-target.y)*5.0) if falling else WALK_SPEED
-	position = position.move_toward(target,maxf(0.0,delta)*move_speed)
+	# Ordinary walking interpolation; gravity/falling is intentionally disabled.
+	position = position.move_toward(target,maxf(0.0,delta)*WALK_SPEED)
 	name_label.text=state.display_name+" | "+state.activity

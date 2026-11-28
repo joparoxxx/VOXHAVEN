@@ -48,7 +48,7 @@ func request_area(first: Vector3i, last: Vector3i, depth: int) -> int:
    var surface := mini(maxi(terrain.surface_at(x,z),maxi(first.y,last.y)),World.HEIGHT-2)
    while surface > 0 and terrain.block_at(Vector3i(x,surface,z)) == World.Block.AIR:
     surface -= 1
-   if surface <= 0 or mining.is_tree_base(Vector3i(x,surface,z)):
+   if surface <= 0 or mining.is_protected(Vector3i(x,surface,z)):
     # Do not put an excavation plan underneath a living tree.
     # Woodcutting is ordered separately by the unified Mine tool.
     continue
@@ -87,7 +87,7 @@ func schedule() -> void:
  var highest_remaining := -1
  for key in columns.keys():
   var next := _next_solid(key)
-  if next.y < 0 or mining.is_tree_base(next):
+  if next.y < 0 or mining.is_tree_above(next):
    if active.has(key):
     var job: Vector3i = active[key]
     if owned.has(job):
@@ -173,7 +173,7 @@ func restore(data: Dictionary) -> void:
   if top < 1 or top > World.HEIGHT-2 or bottom < 1 or bottom > top or top-bottom+1 > MAX_DEPTH:
    continue
   var key := Vector2i(int(row[0]),int(row[1]))
-  if mining != null and mining.is_tree_base(Vector3i(key.x,top,key.y)):
+  if mining != null and mining.is_tree_above(Vector3i(key.x,top,key.y)):
    continue
   columns[key] = {"top":top,"bottom":bottom}
  schedule()
